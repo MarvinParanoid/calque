@@ -1,13 +1,23 @@
 body {
     margin: 0;
     padding: 0;
+	background: rgb(39, 40, 34);
+    color: rgb(151, 170, 193);
 	overflow: hidden;
+}
+
+a {
+    color: rgb(102, 217, 239);
+}
+
+a:visited {
+    color: rgb(174, 129, 255);
 }
 
 .interface {
     position: absolute;
     top: 0;
-    right: 350px;
+    right: 0; 
     bottom: 0;
     left: 0;
     height: 100%;
@@ -21,17 +31,19 @@ body {
     top: 0;
     right: 0;
     left: 0;
-    width: 100%;
 	height: 100%;
+    width: 100%;
     font-family: monospace;
     font-size: 16px;
     line-height: 1.5;
     padding: 20px;
     box-sizing: border-box;
     white-space: pre;
+	padding-bottom: 0;
 }
 
 .interface .input {
+	color: white;
     overflow: auto;
     border: none;
     outline: none;
@@ -41,6 +53,18 @@ body {
 
 .interface .output {
     overflow: hidden;
+}
+
+.interface .output .empty {
+    visibility: hidden;
+}
+
+.interface .output .function {
+    color: grey;
+}
+
+.interface .output .value {
+    color: grey;
 }
 
 .interface .output div {
