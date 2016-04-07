@@ -1,4 +1,4 @@
-(function () {
+﻿(function () {
     function translit(text){
         return text.replace(/[а-яА-Я]/g, function (match) {
             return '_x' + match.charCodeAt() + 'x_';
@@ -10,6 +10,31 @@
             return String.fromCharCode(code);
         });
     }
+	
+	var decodeData = function(encodedData) {
+        if (encodedData.length > 1) {
+            var encodingType = encodedData[0];
+            encodedData = encodedData.slice(1);
+            if ('a' == encodingType) {
+                return atob(encodedData);
+            }
+            if ('e' == encodingType) {
+                return unescape(atob(encodedData));
+            }
+        }
+        return '';
+    };
+	
+    var encodeData = function(data) {
+        if (!data.length) return '';
+        try {
+            var encodedData = btoa(data);
+            if (atob(encodedData) == data) {
+                return 'a' + encodedData;
+            }
+        } catch (e) {}
+        return 'e' + btoa(escape(data));
+    };
 
     function Calque(inputEl, outputEl) {
         this.inputEl = inputEl;
@@ -20,14 +45,34 @@
         this.lines = [];
         this.expressions = [];
         this.activeLine = 0;
-
+		var oldValue = null;
+		var oldSelectionStart = null;
+		
+		if (window.location.hash.length) {    
+			try {
+				inputEl.value = decodeData(window.location.hash.slice(1));
+			} catch(e) {}
+		}
+		
         var handler = function () {
+			var newValue = inputEl.value;
+			if (newValue !== oldValue) {
+				oldValue = newValue;
+				window.location.hash = encodeData(newValue);
+			}
+			var newSelectionStart = inputEl.selectionStart;
+			if (newSelectionStart !== oldSelectionStart) {
+				oldSelectionStart = newSelectionStart;
+				window.location.hash = encodeData(newValue);
+			}
+		
             this.updateActiveLine();
             this.input();
             this.inputEl.style.height = Math.max(
                 this.outputEl.clientHeight,
                 this.parentEl.clientHeight
             ) + 'px';
+			
         }.bind(this);
 
         handler();
@@ -37,8 +82,21 @@
         setInterval(handler, 50);
 
         this.outputEl.scrollTop = this.inputEl.scrollTop;
-    }
+		
+		var shareEl = document.getElementById('share');
+		var tinyurlEl = document.getElementById('tinyurl');
+		tinyurlEl.onclick = function() {
+			shareEl.value = window.location.href;
+			return true;
+		}
+		
+		outputEl.scrollTop = inputEl.scrollTop;
+		inputEl.onscroll = function () {
+			outputEl.scrollTop = inputEl.scrollTop;
+		};
 
+    }
+	
     Calque.prototype.updateActiveLine = function () {
         var value = this.inputEl.value;
         var selectionStart = this.inputEl.selectionStart;
@@ -85,12 +143,12 @@
                 result: null,
                 error: null,
             }
-
+			
             this.expressions.push(expression);
 
             if (expression.code.substr(0, 2) === '  ') {
                 expression.tab = expression.code.match(/\s+/)[0].match(/\s{2}/g).length;
-            } else {
+			} else {
                 expression.tab = 0;
             }
 
@@ -108,7 +166,7 @@
                         names.push(part.trim());
                     }
                 });
-
+				
                 names.forEach(function (name) {
                     spacevars.splice(0, 0, {
                         original: name,
@@ -136,13 +194,24 @@
 
                 expression.processed = name + ' = 0';
             }
-
+			
             spacevars.forEach(function (spacevar) {
                 expression.processed = expression.processed.replace(spacevar.regexp, spacevar.replaced);
             });
 
             expression.processed = translit(expression.processed);
-
+			
+			re = /0x[0-9A-Fa-f]+/  ;
+			while ( (arr = expression.processed.match(re)) != null ){
+				expression.processed = expression.processed.replace( arr[0],  parseInt( arr[0], 16) );	
+			}
+			
+			re = /0b[01]+/  ;
+			while ( (arr = expression.processed.match(re)) != null ){
+				binstr = arr[0].substr(2,arr[0].length);
+				expression.processed = expression.processed.replace( arr[0],  parseInt( binstr, 2) );	
+			}
+			
             try {
                 expression.result = math.eval(expression.processed, scope);
             } catch (e) {
@@ -206,7 +275,7 @@
                 if (expression.result instanceof Function) {
                     prefix += 'fn';
                 } else {
-                    prefix += '= ';
+                    prefix += '';
                 }
             }
             if (type === 'error') prefix += '// ';
@@ -219,7 +288,10 @@
                     var source = expression.result.toString();
                     data = '';
                 } else {
-                    data = expression.result.toString();
+                    result = expression.result.toString();
+					if (document.getElementById("checkDec").checked) data = " = " + result;
+					if (document.getElementById("checkHex").checked) data+= " = " + strDecTo(result,"0x",16);
+					if (document.getElementById("checkBin").checked) data+= " = " + strDecTo(result,"0b",2);
                 }
             };
             if (type === 'error') data = expression.error;
@@ -234,6 +306,10 @@
 
         this.outputEl.innerHTML = html;
     };
+	
+	function strDecTo(str,prefix,notation){
+		return prefix+Math.round(Number(str)).toString(notation).toUpperCase();
+	}
 
     window.Calque = Calque;
 })();
