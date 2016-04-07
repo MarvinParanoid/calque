@@ -33,8 +33,8 @@
 		<input type="checkbox" checked="checked" id="checkBin" onclick="window.onload();"/> bin 
 		
 		<br><p>
-		<input type="radio" name="rb_group1" checked onclick="document.getElementById('dark-styles').disabled  = true;"/> Light side 
-		<input type="radio" name="rb_group1" onclick="document.getElementById('dark-styles').disabled  = false;"/> Dark side
+		<input type="radio" name="rb_group1" id="rbLight" checked onclick="document.getElementById('dark-styles').disabled=true; window.location.search=window.location.search.replace('style=dark',''); "/> Light side
+		<input type="radio" name="rb_group1" id="rbDark" onclick="document.getElementById('dark-styles').disabled=false; window.location.search+='style=dark'; "/> Dark side
 		
         <h2>Expressions</h2>
         <pre data-result=" = 5">sqrt(3^2 + 4^2)</pre>
@@ -48,7 +48,12 @@
         <h2>Functions</h2>
         <pre data-result=" fn">pow(x,2) = x ^ 2</pre>
         <pre data-result=" = 36">pow(6,2)</pre>
-        <hr>
+        
+		<h2>Numeral systems</h2>
+		<pre data-result=" = 17086 = 0x42BE">0x42AB + 19</pre>
+		<pre data-result=" = 342 = 0b101010110">0b10101011&lt&lt1 </pre>
+		
+		<hr>
         <h2>Copy URL to share</h2>
         <p><form action="http://tinyurl.com/create.php" method="post" target="_blank">
         <input type="hidden" name="url" id="share" style="width:100%">

@@ -35,7 +35,7 @@
         } catch (e) {}
         return 'e' + btoa(escape(data));
     };
-
+	
     function Calque(inputEl, outputEl) {
         this.inputEl = inputEl;
         this.outputEl = outputEl;
@@ -47,6 +47,11 @@
         this.activeLine = 0;
 		var oldValue = null;
 		var oldSelectionStart = null;
+		
+		if ( window.location.search.match(/style=dark/)){
+			document.getElementById('dark-styles').disabled  = false;
+			document.getElementById('rbDark').checked  = true;
+		}
 		
 		if (window.location.hash.length) {    
 			try {
