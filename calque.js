@@ -11,10 +11,10 @@
         });
     }
 	
-	var decodeData = function(encodedData) {
+	function decodeData(encodedData) {
         if (encodedData.length > 1) {
             var encodingType = encodedData[0];
-            encodedData = encodedData.slice(1);
+            encodedData = encodedData.slice(1);     
             if ('a' == encodingType) {
                 return atob(encodedData);
             }
@@ -25,7 +25,7 @@
         return '';
     };
 	
-    var encodeData = function(data) {
+    function encodeData(data) {
         if (!data.length) return '';
         try {
             var encodedData = btoa(data);
@@ -39,14 +39,11 @@
     function Calque(inputEl, outputEl) {
         this.inputEl = inputEl;
         this.outputEl = outputEl;
-        this.parentEl = inputEl.parentNode;
 
         this.raw = '';
         this.lines = [];
         this.expressions = [];
         this.activeLine = 0;
-		var oldValue = null;
-		var oldSelectionStart = null;
 		
 		if ( window.location.search.match(/style=dark/)){
 			document.getElementById('dark-styles').disabled  = false;
@@ -60,24 +57,9 @@
 		}
 		
         var handler = function () {
-			var newValue = inputEl.value;
-			if (newValue !== oldValue) {
-				oldValue = newValue;
-				window.location.hash = encodeData(newValue);
-			}
-			var newSelectionStart = inputEl.selectionStart;
-			if (newSelectionStart !== oldSelectionStart) {
-				oldSelectionStart = newSelectionStart;
-				window.location.hash = encodeData(newValue);
-			}
-		
             this.updateActiveLine();
             this.input();
-            this.inputEl.style.height = Math.max(
-                this.outputEl.clientHeight,
-                this.parentEl.clientHeight
-            ) + 'px';
-			
+            outputEl.scrollTop = inputEl.scrollTop;
         }.bind(this);
 
         handler();
@@ -86,22 +68,16 @@
         this.inputEl.onkeyup = handler;
         setInterval(handler, 50);
 
-        this.outputEl.scrollTop = this.inputEl.scrollTop;
-		
-		var shareEl = document.getElementById('share');
-		var tinyurlEl = document.getElementById('tinyurl');
-		tinyurlEl.onclick = function() {
-			shareEl.value = window.location.href;
-			return true;
+		document.getElementById('tinyurl').onclick = function() {
+			 document.getElementById('share').value = window.location.href;
 		}
 		
-		outputEl.scrollTop = inputEl.scrollTop;
 		inputEl.onscroll = function () {
 			outputEl.scrollTop = inputEl.scrollTop;
 		};
 
     }
-	
+
     Calque.prototype.updateActiveLine = function () {
         var value = this.inputEl.value;
         var selectionStart = this.inputEl.selectionStart;
@@ -119,23 +95,25 @@
             this.repaint();
         }
     }
+    
+    Calque.prototype.updateHash = function(data) {
+        window.location.hash = encodeData(data);
+    }
 
     Calque.prototype.input = function () {
         var raw = this.inputEl.value;
         if (raw !== this.raw) {
             this.raw = raw;
             this.lines = this.raw.split("\n");
+            this.updateHash(this.raw);
             this.recalc();
         }
     }
 
     Calque.prototype.recalc = function () {
         this.expressions = [];
-
         var spacevars = [];
-
         var sums = [];
-
         var scope = {
             last: null
         };
@@ -206,16 +184,8 @@
 
             expression.processed = translit(expression.processed);
 			
-			re = /0x[0-9A-Fa-f]+/  ;
-			while ( (arr = expression.processed.match(re)) != null ){
-				expression.processed = expression.processed.replace( arr[0],  parseInt( arr[0], 16) );	
-			}
-			
-			re = /0b[01]+/  ;
-			while ( (arr = expression.processed.match(re)) != null ){
-				binstr = arr[0].substr(2,arr[0].length);
-				expression.processed = expression.processed.replace( arr[0],  parseInt( binstr, 2) );	
-			}
+            expression.processed = expression.processed.replace( /0x[0-9A-Fa-f]+/g , function(match){ return parseInt( match, 16 ); } );
+			expression.processed = expression.processed.replace( /0b[01]+/g , function(match){ return  parseInt( match.substr(2,match.length), 2); } );
 			
             try {
                 expression.result = math.eval(expression.processed, scope);
@@ -294,7 +264,7 @@
                     data = '';
                 } else {
                     result = expression.result.toString();
-					if (document.getElementById("checkDec").checked) data = " = " + result;
+					if (document.getElementById("checkDec").checked) data+= " = " + result;
 					if (document.getElementById("checkHex").checked) data+= " = " + strDecTo(result,"0x",16);
 					if (document.getElementById("checkBin").checked) data+= " = " + strDecTo(result,"0b",2);
                 }
