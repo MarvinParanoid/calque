@@ -358,8 +358,9 @@
         }
 
         if (this.activeLine !== activeLine) {
+            var previous = this.activeLine;
             this.activeLine = activeLine;
-            this.repaint();
+            this.repaintRows([previous - 1, activeLine - 1]);
         }
     }
     
@@ -378,6 +379,19 @@
             this.recalc();
         }
     }
+
+    // Parsing is most of the evaluation cost, and on each keystroke only one
+    // line changes: keep compiled expressions by their text.
+    Calque.prototype.compile = function (code) {
+        var cache = this.compiled || (this.compiled = new Map());
+        var compiled = cache.get(code);
+        if (!compiled) {
+            compiled = math.compile(code); // throws on syntax errors, which are not cached
+            if (cache.size > 5000) cache.clear();
+            cache.set(code, compiled);
+        }
+        return compiled;
+    };
 
     Calque.prototype.recalc = function () {
         this.expressions = [];
@@ -431,13 +445,13 @@
             // Hex/bin/octal literals (0xFF, 0b101, 0o17) are parsed by math.js itself.
             expression.processed = outsideStrings(expression.processed, function (part) {
                 spacevars.forEach(function (spacevar) {
-                    part = part.replace(spacevar.regexp, spacevar.replaced);
+                    if (part.indexOf(spacevar.original) !== -1) part = part.replace(spacevar.regexp, spacevar.replaced);
                 });
                 return translit(part);
             });
 
             try {
-                expression.result = math.evaluate(expression.processed, scope);
+                expression.result = this.compile(expression.processed).evaluate(scope);
             } catch (e) {
                 expression.error = detranslit(e.toString());
             }
@@ -477,76 +491,106 @@
         this.repaint();
     };
 
+    // Rendering context shared by all rows of one repaint
+    Calque.prototype.renderContext = function () {
+        return {
+            metrics: this.metrics(),
+            dec: document.getElementById('checkDec').checked,
+            hex: document.getElementById('checkHex').checked,
+            bin: document.getElementById('checkBin').checked
+        };
+    };
+
+    Calque.prototype.renderRow = function (index, ctx) {
+        var expression = this.expressions[index];
+        var type;
+
+        if (expression.error) {
+            // errors on the line being edited are hidden until the caret leaves it
+            type = this.activeLine === index + 1 ? 'empty' : 'error';
+        } else if (expression.result === undefined) {
+            type = 'empty';
+            for (var i = index; i < this.lines.length; i++) {
+                if (this.expressions[i].result !== undefined) {
+                    expression.tab = this.expressions[i].tab;
+                    break;
+                }
+            }
+        } else {
+            type = 'result';
+        }
+
+        // Indentation guides ("| " per sum level) are drawn over the
+        // line's leading spaces; the result starts right after the text,
+        // at its measured width, so tabs and wide characters don't shift it.
+        var guides = '';
+        for (var g = 0; g < expression.tab; g++) guides += '| ';
+
+        // Each piece: [css class, text]; text is escaped when rendered.
+        var pieces = [];
+        if (type === 'result') {
+            if (expression.result === null) {
+                pieces.push(['value', 'null']);
+            } else if (expression.result instanceof Function) {
+                pieces.push(['fn', 'fn']);
+            } else {
+                var result = formatResult(expression.result);
+                var hex = toBase(expression.result, '0x', 16);
+                var bin = toBase(expression.result, '0b', 2);
+                if (ctx.dec) pieces.push(['value', ' = ' + result]);
+                if (hex && ctx.hex) pieces.push(['alt', ' = ' + hex]);
+                if (bin && ctx.bin) pieces.push(['alt', ' = ' + bin]);
+            }
+        }
+        if (type === 'error') pieces.push(['marker', '// '], ['message', expression.error]);
+
+        var classes = type + (this.activeLine === index + 1 ? ' active' : '');
+        var html = '<div class="' + classes + '">';
+        html += '<span class="prefix" data-prefix="' + escapeHtml(guides) + '"></span>';
+        if (pieces.length) {
+            var offset = ctx.metrics.textWidth(expression.code + ' ') - ctx.metrics.textWidth(guides);
+            html += '<span class="data" style="margin-left: ' + offset.toFixed(2) + 'px">';
+        } else {
+            html += '<span class="data">';
+        }
+        pieces.forEach(function (piece) {
+            html += '<span class="' + piece[0] + '">' + escapeHtml(piece[1]) + '</span>';
+        });
+        return html + '</span></div>';
+    };
+
     Calque.prototype.repaint = function () {
-        var html = '';
-        var m = this.metrics();
+        var ctx = this.renderContext();
+        var html = [];
+        for (var i = 0; i < this.lines.length; i++) html.push(this.renderRow(i, ctx));
 
-        this.lines.forEach(function (line, index) {
-            var expression = this.expressions.filter(function (expression) {
-                return expression.line === index;
-            })[0];
-
-            if (expression.error) {
-                if (this.activeLine === index + 1) {
-                    var type = 'empty';
-                } else {
-                    var type = 'error';
-                }
-            } else if (expression.result === undefined) {
-                var type = 'empty';
-
-                for (var i = index; i < this.lines.length; i++) {
-                    if (this.expressions[i].result !== undefined) {
-                        expression.tab = this.expressions[i].tab;
-                        break;
-                    }
-                }
-            } else {
-                var type = 'result';
+        // Typing usually changes one row (plus open sums): replace only rows
+        // whose markup changed, so the browser doesn't re-layout the whole document.
+        var rows = this.outputEl.children;
+        if (this.rowHtml && this.rowHtml.length === html.length && rows.length === html.length) {
+            for (var j = 0; j < html.length; j++) {
+                if (html[j] !== this.rowHtml[j]) rows[j].outerHTML = html[j];
             }
+        } else {
+            this.outputEl.innerHTML = html.join('');
+        }
+        this.rowHtml = html;
+        this.updateSize();
+    };
 
-            // Indentation guides ("| " per sum level) are drawn over the
-            // line's leading spaces; the result starts right after the text,
-            // at its measured width, so tabs and wide characters don't shift it.
-            var guides = '';
-            for (var g = 0; g < expression.tab; g++) guides += '| ';
-
-            // Each piece: [css class, text]; text is escaped when rendered.
-            var pieces = [];
-            if (type === 'result') {
-                if (expression.result === null) {
-                    pieces.push(['value', 'null']);
-                } else if (expression.result instanceof Function) {
-                    pieces.push(['fn', 'fn']);
-                } else {
-                    var result = formatResult(expression.result);
-                    var hex = toBase(expression.result, '0x', 16);
-                    var bin = toBase(expression.result, '0b', 2);
-                    if (document.getElementById('checkDec').checked) pieces.push(['value', ' = ' + result]);
-                    if (hex && document.getElementById('checkHex').checked) pieces.push(['alt', ' = ' + hex]);
-                    if (bin && document.getElementById('checkBin').checked) pieces.push(['alt', ' = ' + bin]);
-                }
-            }
-            if (type === 'error') pieces.push(['marker', '// '], ['message', expression.error]);
-
-            var classes = type + (this.activeLine === index + 1 ? ' active' : '');
-            var lineHtml = '<div class="' + classes + '">';
-            lineHtml += '<span class="prefix" data-prefix="' + escapeHtml(guides) + '"></span>';
-            if (pieces.length) {
-                var offset = m.textWidth(expression.code + ' ') - m.textWidth(guides);
-                lineHtml += '<span class="data" style="margin-left: ' + offset.toFixed(2) + 'px">';
-            } else {
-                lineHtml += '<span class="data">';
-            }
-            pieces.forEach(function (piece) {
-                lineHtml += '<span class="' + piece[0] + '">' + escapeHtml(piece[1]) + '</span>';
-            });
-            lineHtml += '</span></div>';
-
-            html += lineHtml;
-        }.bind(this));
-
-        this.outputEl.innerHTML = html;
+    // Re-render only the given rows (e.g. when the caret moves to another line)
+    Calque.prototype.repaintRows = function (indexes) {
+        var rows = this.outputEl.children;
+        if (rows.length !== this.lines.length || this.expressions.length !== this.lines.length) {
+            return this.repaint();
+        }
+        var ctx = this.renderContext();
+        indexes.forEach(function (index) {
+            if (index < 0 || index >= rows.length) return;
+            var html = this.renderRow(index, ctx);
+            if (this.rowHtml) this.rowHtml[index] = html;
+            rows[index].outerHTML = html;
+        }, this);
         this.updateSize();
     };
 	
