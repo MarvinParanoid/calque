@@ -109,13 +109,19 @@ a:focus-visible {
 .interface {
     position: relative;
     min-width: 0;
+    overflow: auto;
     background: var(--bg);
 }
 
 .interface .input,
 .interface .output {
     position: absolute;
-    inset: 0;
+    top: 0;
+    left: 0;
+    /* JS (updateSize) sets width/height to the content size; never smaller
+       than the visible area. .interface scrolls both layers together. */
+    min-width: 100%;
+    min-height: 100%;
     margin: 0;
     padding: var(--editor-pad-y) var(--editor-pad-x);
     font-family: var(--font-mono);
@@ -126,7 +132,7 @@ a:focus-visible {
 }
 
 .interface .input {
-    overflow: auto;
+    overflow: hidden;
     border: none;
     outline: none;
     background: none;
@@ -142,6 +148,10 @@ a:focus-visible {
 .interface .output {
     overflow: hidden;
     pointer-events: none;
+    /* Grid rows all take the width of the longest line, so the active-line
+       highlight still spans the row when scrolled horizontally. */
+    display: grid;
+    align-content: start;
 }
 
 .interface .output > div {
@@ -418,6 +428,11 @@ a:focus-visible {
     border-color: var(--accent);
     background: var(--accent-soft);
     color: var(--accent);
+}
+
+.button.failed {
+    border-color: var(--error);
+    color: var(--error);
 }
 
 .hint {

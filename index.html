@@ -41,10 +41,19 @@
                     }).join('\n');
                     var value = input.value.replace(/\s+$/, '');
                     input.value = (value ? value + '\n\n' : '') + code + '\n';
-                    input.focus();
+                    // Scrolling is done explicitly below: whether focus() scrolls
+                    // the page differs between browsers (iOS Safari often doesn't).
+                    input.focus({ preventScroll: true });
                     input.setSelectionRange(input.value.length, input.value.length);
-                    input.scrollTop = input.scrollHeight;
-                    input.dispatchEvent(new Event('input'));
+                    input.dispatchEvent(new Event('input')); // recalculates and scrolls the editor to the caret
+
+                    // On narrow screens the editor is above the sidebar: bring it back into view.
+                    var editor = input.parentNode;
+                    var rect = editor.getBoundingClientRect();
+                    if (rect.top < 0 || rect.bottom > window.innerHeight) {
+                        var reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+                        editor.scrollIntoView({ block: 'start', behavior: reduceMotion ? 'auto' : 'smooth' });
+                    }
                 };
                 card.addEventListener('click', insert);
                 card.addEventListener('keydown', function (event) {
@@ -56,28 +65,46 @@
             });
         }
 
+        // Copy the current URL. "Copied!" only after the copy really succeeded;
+        // on failure say so and point to the address bar instead.
+        var copyFeedbackTimer = null;
         function copyLink() {
             var url = location.href;
-            var done = function () {
-                var button = document.getElementById('copyLink');
-                button.classList.add('copied');
-                button.textContent = 'Copied!';
-                setTimeout(function () {
-                    button.classList.remove('copied');
+            var button = document.getElementById('copyLink');
+            var hint = document.getElementById('copyHint');
+            var defaultHint = hint.getAttribute('data-default');
+
+            var show = function (ok) {
+                clearTimeout(copyFeedbackTimer);
+                button.classList.toggle('copied', ok);
+                button.classList.toggle('failed', !ok);
+                button.textContent = ok ? 'Copied!' : 'Couldn\u2019t copy';
+                hint.textContent = ok ? defaultHint : 'Copy the link from the address bar.';
+                copyFeedbackTimer = setTimeout(function () {
+                    button.classList.remove('copied', 'failed');
                     button.textContent = 'Copy link';
-                }, 1500);
+                    hint.textContent = defaultHint;
+                }, ok ? 1500 : 4000);
             };
+
+            // Legacy path for non-secure contexts or when the Clipboard API is refused.
             var fallback = function () {
                 var field = document.createElement('textarea');
                 field.value = url;
+                field.setAttribute('readonly', '');
+                field.style.position = 'fixed';
+                field.style.top = '-1000px';
                 document.body.appendChild(field);
                 field.select();
-                document.execCommand('copy');
+                var ok = false;
+                try { ok = document.execCommand('copy'); } catch (e) {}
                 document.body.removeChild(field);
-                done();
+                button.focus();
+                show(ok);
             };
-            if (navigator.clipboard && window.isSecureContext) {
-                navigator.clipboard.writeText(url).then(done, fallback);
+
+            if (navigator.clipboard && navigator.clipboard.writeText && window.isSecureContext) {
+                navigator.clipboard.writeText(url).then(function () { show(true); }, fallback);
             } else {
                 fallback();
             }
@@ -188,8 +215,8 @@
         </section>
 
         <section class="share">
-            <button type="button" id="copyLink" class="button" onclick="copyLink();">Copy link</button>
-            <p class="hint">The link contains everything you typed.</p>
+            <button type="button" id="copyLink" class="button" aria-live="polite" onclick="copyLink();">Copy link</button>
+            <p class="hint" id="copyHint" data-default="The link contains everything you typed.">The link contains everything you typed.</p>
         </section>
 
         <footer class="credits">

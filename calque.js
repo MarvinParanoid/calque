@@ -125,10 +125,13 @@
             outputEl.scrollLeft = inputEl.scrollLeft;
         };
 
-        var handler = function () {
+        var handler = function (event) {
             this.updateActiveLine();
             this.input();
             syncScroll();
+            // Typing, paste, undo may put the caret outside the visible area
+            // after the layers were resized; scroll the editor to it.
+            if (event && event.type === 'input') this.revealCaret();
         }.bind(this);
 
         handler();
@@ -140,7 +143,86 @@
 
         inputEl.addEventListener('scroll', syncScroll);
         inputEl.addEventListener('keydown', autoIndent);
+
+        // The browser reveals the caret only up to its own box, ignoring the
+        // editor padding; keep the caret line fully visible on every caret move.
+        document.addEventListener('selectionchange', function () {
+            if (document.activeElement === inputEl) this.revealCaret();
+        }.bind(this));
+
+        // Font size depends on the viewport width, so sizes change on resize.
+        window.addEventListener('resize', function () {
+            this.updateSize();
+            syncScroll();
+        }.bind(this));
     }
+
+    // Editor layout: .interface is the scroll container; the textarea and the
+    // results layer on top of each other are sized to the content (CSS keeps
+    // them at least as large as the visible area), so both scroll together.
+    // Results are drawn further right than the text itself, which is why the
+    // textarea alone could not scroll to them.
+    Calque.prototype.metrics = function () {
+        var style = getComputedStyle(this.inputEl);
+        var ctx = this.measureCtx || (this.measureCtx = document.createElement('canvas').getContext('2d'));
+        ctx.font = style.fontStyle + ' ' + style.fontWeight + ' ' + style.fontSize + ' ' + style.fontFamily;
+        return {
+            padTop: parseFloat(style.paddingTop),
+            padRight: parseFloat(style.paddingRight),
+            padBottom: parseFloat(style.paddingBottom),
+            padLeft: parseFloat(style.paddingLeft),
+            lineHeight: parseFloat(style.lineHeight),
+            textWidth: function (text) {
+                return ctx.measureText(text.replace(/\t/g, '    ')).width;
+            }
+        };
+    };
+
+    Calque.prototype.updateSize = function () {
+        var output = this.outputEl;
+        var m = this.metrics();
+
+        var contentWidth = 0;
+        this.lines.forEach(function (line) {
+            contentWidth = Math.max(contentWidth, m.textWidth(line));
+        });
+        var left = output.getBoundingClientRect().left - output.scrollLeft + m.padLeft;
+        Array.prototype.forEach.call(output.querySelectorAll('.data'), function (data) {
+            contentWidth = Math.max(contentWidth, data.getBoundingClientRect().right - left);
+        });
+
+        var width = Math.ceil(m.padLeft + contentWidth + m.padRight) + 'px';
+        var height = Math.ceil(m.padTop + this.lines.length * m.lineHeight + m.padBottom) + 'px';
+        [this.inputEl, output].forEach(function (el) {
+            el.style.width = width;
+            el.style.height = height;
+        });
+    };
+
+    Calque.prototype.revealCaret = function () {
+        var input = this.inputEl;
+        var scroller = input.parentNode;
+        var m = this.metrics();
+        // The moving end of the selection: start when selecting backwards
+        var caret = input.selectionDirection === 'backward' ? input.selectionStart : input.selectionEnd;
+        var before = input.value.slice(0, caret);
+        var lineStart = before.lastIndexOf('\n') + 1;
+        var row = before.split('\n').length - 1;
+
+        var x = m.padLeft + m.textWidth(before.slice(lineStart)) - input.scrollLeft;
+        var y = m.padTop + row * m.lineHeight - input.scrollTop;
+
+        if (x - m.padLeft < scroller.scrollLeft) {
+            scroller.scrollLeft = x - m.padLeft;
+        } else if (x + m.padRight > scroller.scrollLeft + scroller.clientWidth) {
+            scroller.scrollLeft = x + m.padRight - scroller.clientWidth;
+        }
+        if (y - m.padTop < scroller.scrollTop) {
+            scroller.scrollTop = y - m.padTop;
+        } else if (y + m.lineHeight + m.padBottom > scroller.scrollTop + scroller.clientHeight) {
+            scroller.scrollTop = y + m.lineHeight + m.padBottom - scroller.clientHeight;
+        }
+    };
 
     Calque.prototype.updateActiveLine = function () {
         var value = this.inputEl.value;
@@ -325,6 +407,7 @@
         }.bind(this));
 
         this.outputEl.innerHTML = html;
+        this.updateSize();
     };
 	
 	function escapeHtml(text) {
