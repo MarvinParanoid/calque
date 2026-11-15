@@ -1,41 +1,64 @@
+/* ---------- Design tokens ---------- */
+
 :root {
     --font-ui: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
     --font-mono: ui-monospace, "JetBrains Mono", "SF Mono", "Cascadia Code", Menlo, Consolas, "Liberation Mono", monospace;
 
-    --sidebar-width: 340px;
-    --editor-pad-x: 32px;
-    --editor-pad-y: 28px;
+    /* Type scale: one size per role */
+    --fs-editor: clamp(15px, 0.35vw + 10.5px, 18px); /* 15px @1280 → 17px @1850 → 18px max */
+    --fs-title: 20px;
+    --fs-body: 14px;
+    --fs-control: 13px;
+    --fs-code: 13px;
+    --fs-small: 12.5px;
+    --fs-label: 11.5px;
 
-    --bg: #fdfcfa;
-    --panel: #f5f3ef;
+    /* Layout */
+    --sidebar-width: clamp(320px, 20vw, 380px);
+    --editor-pad-x: 24px;
+    --editor-pad-y: 24px;
+    --radius: 8px;
+    --radius-sm: 6px;
+
+    /* Light theme */
+    --bg: #fcfcfb;
+    --panel: #f6f6f3;
     --card: #ffffff;
-    --border: #e7e3dc;
-    --text: #1f2328;
-    --muted: #6b6f76;
-    --faint: #d9d4cb;
-    --accent: #0f7b6c;
-    --accent-soft: #e0f2ee;
-    --alt: #a3a7ad;
-    --error: #c4441c;
-    --active-line: #f4f1ea;
-    --selection: #cfe8e2;
+    --border: #e4e4df;
+    --border-strong: #cfcfc8;
+    --text: #1d2125;
+    --heading: #3c4147;
+    --muted: #5f656c;
+    --faint: #d6d6d0;
+    --accent: #0d7a6b;
+    --accent-soft: #ddf1ec;
+    --alt: #858b93;
+    --error: #c0401a;
+    --active-line: rgba(13, 122, 107, 0.055);
+    --hover: rgba(0, 0, 0, 0.045);
+    --selection: #cde9e2;
 }
 
 :root[data-theme="dark"] {
     --bg: #15171c;
-    --panel: #1b1e24;
-    --card: #21252c;
-    --border: #2c313a;
+    --panel: #1a1d23;
+    --card: #20242b;
+    --border: #2a2e36;
+    --border-strong: #3b414b;
     --text: #e4e6ea;
-    --muted: #8d95a1;
-    --faint: #363b45;
+    --heading: #c4c9d1;
+    --muted: #9aa2ae;
+    --faint: #353a44;
     --accent: #5fd4bf;
-    --accent-soft: #1d3a36;
-    --alt: #5d6470;
+    --accent-soft: rgba(95, 212, 191, 0.14);
+    --alt: #7b8390;
     --error: #f2836b;
-    --active-line: #1c1f26;
+    --active-line: rgba(95, 212, 191, 0.065);
+    --hover: rgba(255, 255, 255, 0.055);
     --selection: #23433e;
 }
+
+/* ---------- Base ---------- */
 
 * {
     box-sizing: border-box;
@@ -67,13 +90,21 @@ a:hover {
     text-decoration: underline;
 }
 
+a:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+    border-radius: 3px;
+}
+
 .app {
     display: grid;
-    grid-template-columns: 1fr var(--sidebar-width);
+    grid-template-columns: minmax(0, 1fr) var(--sidebar-width);
     height: 100%;
 }
 
-/* ---------- Editor: transparent textarea on top of rendered results ---------- */
+/* ---------- Editor: transparent textarea on top of rendered results ----------
+   .input and .output must share font, size, line-height and padding exactly,
+   otherwise results drift away from their lines. */
 
 .interface {
     position: relative;
@@ -88,8 +119,8 @@ a:hover {
     margin: 0;
     padding: var(--editor-pad-y) var(--editor-pad-x);
     font-family: var(--font-mono);
-    font-size: 16px;
-    line-height: 1.75;
+    font-size: var(--fs-editor);
+    line-height: 1.6;
     white-space: pre;
     tab-size: 4;
 }
@@ -120,7 +151,7 @@ a:hover {
 
 .interface .output > div.active {
     background: var(--active-line);
-    box-shadow: inset 3px 0 var(--accent);
+    box-shadow: inset 2px 0 var(--accent);
 }
 
 .interface .output .prefix::before {
@@ -157,12 +188,12 @@ a:hover {
 .info {
     display: flex;
     flex-direction: column;
-    gap: 28px;
-    padding: 32px 28px;
+    gap: 24px;
+    padding: 28px 24px 20px;
     overflow: auto;
     background: var(--panel);
     border-left: 1px solid var(--border);
-    font-size: 14px;
+    font-size: var(--fs-body);
     line-height: 1.5;
 }
 
@@ -170,37 +201,43 @@ a:hover {
     display: flex;
     align-items: flex-start;
     justify-content: space-between;
+    gap: 12px;
 }
 
 .brand h1 {
     margin: 0;
-    font-size: 26px;
+    font-size: var(--fs-title);
     font-weight: 700;
-    letter-spacing: -0.02em;
+    line-height: 1.2;
+    letter-spacing: -0.015em;
 }
 
 .tagline {
     margin: 2px 0 0;
     color: var(--muted);
+    font-size: var(--fs-control);
 }
 
 .icon-link {
     display: flex;
-    padding: 6px;
-    margin: -2px -6px 0 0;
-    border-radius: 8px;
+    padding: 7px;
+    margin: -4px -7px 0 0;
+    border-radius: var(--radius);
     color: var(--muted);
+    transition: background-color 0.15s, color 0.15s;
 }
 
 .icon-link:hover {
     color: var(--text);
-    background: var(--card);
+    background: var(--hover);
 }
+
+/* ---------- Controls: segmented chips (checkbox / radio inside) ---------- */
 
 .settings {
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: 10px;
 }
 
 .setting {
@@ -212,13 +249,14 @@ a:hover {
 
 .label {
     color: var(--muted);
+    font-size: var(--fs-control);
 }
 
 .chips {
     display: inline-flex;
-    padding: 3px;
+    padding: 2px;
     gap: 2px;
-    border-radius: 9px;
+    border-radius: var(--radius);
     background: var(--card);
     border: 1px solid var(--border);
 }
@@ -236,22 +274,30 @@ a:hover {
 
 .chip span {
     display: block;
-    padding: 3px 11px;
-    border-radius: 6px;
+    min-width: 44px;
+    padding: 4px 12px;
+    border-radius: var(--radius-sm);
     color: var(--muted);
-    font-size: 13px;
+    font-size: var(--fs-control);
+    font-weight: 500;
+    line-height: 20px;
+    text-align: center;
     user-select: none;
     transition: background-color 0.15s, color 0.15s;
 }
 
-.chip:hover span {
+.chip:hover input:not(:checked) + span {
+    background: var(--hover);
     color: var(--text);
 }
 
 .chip input:checked + span {
     background: var(--accent-soft);
     color: var(--accent);
-    font-weight: 600;
+}
+
+.chip:active span {
+    filter: brightness(0.96);
 }
 
 .chip input:focus-visible + span {
@@ -259,22 +305,50 @@ a:hover {
     outline-offset: 1px;
 }
 
-.examples h2 {
-    margin: 0 0 8px;
-    font-size: 11px;
-    font-weight: 600;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    color: var(--muted);
+.chip input:disabled + span {
+    opacity: 0.45;
+    cursor: not-allowed;
 }
 
-.examples h2:not(:first-child) {
-    margin-top: 20px;
+/* ---------- Examples ---------- */
+
+.note {
+    margin: 0 0 8px;
+    color: var(--muted);
+    font-size: var(--fs-small);
+}
+
+.note code {
+    padding: 0 5px;
+    border-radius: 4px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    font-family: var(--font-mono);
+    color: var(--text);
+}
+
+.examples > .note {
+    margin-bottom: 14px;
+}
+
+.groups {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.group h2 {
+    margin: 0 0 8px;
+    font-size: var(--fs-label);
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--heading);
 }
 
 .card {
-    padding: 8px 12px;
-    border-radius: 10px;
+    padding: 9px 14px;
+    border-radius: var(--radius);
     background: var(--card);
     border: 1px solid var(--border);
     cursor: pointer;
@@ -291,31 +365,12 @@ a:hover {
     box-shadow: 0 0 0 3px var(--accent-soft);
 }
 
-.note {
-    margin: 0 0 8px;
-    color: var(--muted);
-    font-size: 12.5px;
-}
-
-.note code {
-    padding: 1px 5px;
-    border-radius: 4px;
-    background: var(--card);
-    border: 1px solid var(--border);
-    font-family: var(--font-mono);
-    color: var(--text);
-}
-
-.examples > .note:first-child {
-    margin-bottom: 16px;
-}
-
 .card pre {
     display: flex;
     margin: 0;
     font-family: var(--font-mono);
-    font-size: 12.5px;
-    line-height: 1.8;
+    font-size: var(--fs-code);
+    line-height: 1.7;
     white-space: pre;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -327,23 +382,31 @@ a:hover {
     margin-left: auto;
     padding-left: 12px;
     color: var(--accent);
-    opacity: 0.75;
+    opacity: 0.85;
 }
+
+/* ---------- Share ---------- */
 
 .button {
     width: 100%;
-    padding: 9px 14px;
-    border: none;
-    border-radius: 9px;
-    background: var(--accent);
-    color: var(--bg);
-    font: 600 14px var(--font-ui);
+    height: 34px;
+    padding: 0 12px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--card);
+    color: var(--text);
+    font: 500 var(--fs-control) var(--font-ui);
     cursor: pointer;
-    transition: filter 0.15s;
+    transition: background-color 0.15s, border-color 0.15s, color 0.15s;
 }
 
 .button:hover {
-    filter: brightness(1.08);
+    border-color: var(--border-strong);
+    background: var(--hover);
+}
+
+.button:active {
+    filter: brightness(0.96);
 }
 
 .button:focus-visible {
@@ -352,80 +415,48 @@ a:hover {
 }
 
 .button.copied {
+    border-color: var(--accent);
     background: var(--accent-soft);
     color: var(--accent);
 }
 
 .hint {
-    margin: 8px 0 0;
+    margin: 6px 0 0;
     color: var(--muted);
-    font-size: 12.5px;
+    font-size: var(--fs-small);
     text-align: center;
 }
 
+/* ---------- Footer ---------- */
+
 .credits {
-    margin-top: auto;
-    padding-top: 16px;
+    padding-top: 14px;
     border-top: 1px solid var(--border);
     color: var(--muted);
-    font-size: 12.5px;
+    font-size: var(--fs-small);
 }
 
 .credits p {
-    margin: 0 0 4px;
+    margin: 0;
 }
 
-/* ---------- "Fork me on GitHub" corner ribbon (pure CSS, follows the theme) ---------- */
-
-.fork-ribbon {
-    position: fixed;
-    top: 0;
-    right: 0;
-    z-index: 10;
-    width: 150px;
-    height: 150px;
-    overflow: hidden;
-    pointer-events: none;
+.credits span {
+    white-space: nowrap;
 }
 
-.fork-ribbon span {
-    position: absolute;
-    top: 36px;
-    right: -46px;
-    width: 200px;
-    transform: rotate(45deg);
-    background: var(--accent);
-    color: var(--bg);
-    text-align: center;
-    font: 600 12px/30px var(--font-ui);
-    letter-spacing: 0.04em;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
-    pointer-events: auto;
-    transition: filter 0.15s;
+.credits a {
+    color: var(--heading);
 }
 
-.fork-ribbon:hover {
-    text-decoration: none;
-}
-
-.fork-ribbon:hover span {
-    filter: brightness(1.1);
-}
-
-.fork-ribbon:focus-visible span {
-    outline: 2px solid var(--text);
-    outline-offset: 2px;
-}
-
-/* The ribbon replaces the header icon on wide screens */
-.brand .icon-link {
-    display: none;
+.credits a:hover {
+    color: var(--accent);
 }
 
 /* ---------- Narrow screens: editor on top, sidebar below ---------- */
 
 @media (max-width: 800px) {
     :root {
+        --fs-editor: 15px;
         --editor-pad-x: 16px;
         --editor-pad-y: 16px;
     }
@@ -435,8 +466,8 @@ a:hover {
     }
 
     .app {
-        grid-template-columns: 1fr;
-        grid-template-rows: 60vh auto;
+        grid-template-columns: minmax(0, 1fr);
+        grid-template-rows: max(60vh, 320px) auto;
         height: auto;
     }
 
@@ -444,25 +475,16 @@ a:hover {
         border-bottom: 1px solid var(--border);
     }
 
-    .interface .input,
-    .interface .output {
-        font-size: 15px;
-    }
-
     .info {
         border-left: none;
-        padding: 24px 16px;
+        padding: 24px 16px 20px;
     }
 
-    .fork-ribbon {
-        display: none;
+    /* Tablets: examples in columns instead of full-width stretched cards */
+    .groups {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+        gap: 22px 16px;
+        align-items: start;
     }
-
-    .brand .icon-link {
-        display: flex;
-    }
-}
-
-.examples > .note:first-child + h2 {
-    margin-top: 0;
 }
