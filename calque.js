@@ -290,8 +290,13 @@
 			.replace(/'/g, '&#39;');
 	}
 
+	// Hex/bin only make sense for integers: skip units, complex numbers,
+	// booleans, fractions and so on instead of showing 0xNAN or a rounded value.
 	function toBase(str, prefix, base) {
-		return prefix + Math.round(Number(str)).toString(base).toUpperCase();
+		var number = Number(str);
+		if (!Number.isSafeInteger(number)) return null;
+		var sign = number < 0 ? '-' : '';
+		return sign + prefix + Math.abs(number).toString(base).toUpperCase();
 	}
 
     window.Calque = Calque;
