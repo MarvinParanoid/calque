@@ -28,9 +28,9 @@
         <h1>Calque</h1>
         <hr>
 		<h2>Settings</h2>
-		<p><input type="checkbox" checked="checked" id="checkDec" onclick="window.onload();" /> dec
-		<input type="checkbox" checked="checked" id="checkHex" onclick="window.onload();"/> hex
-		<input type="checkbox" checked="checked" id="checkBin" onclick="window.onload();"/> bin 
+		<p><input type="checkbox" checked="checked" id="checkDec" onclick="window.calque.repaint();" /> dec
+		<input type="checkbox" checked="checked" id="checkHex" onclick="window.calque.repaint();"/> hex
+		<input type="checkbox" checked="checked" id="checkBin" onclick="window.calque.repaint();"/> bin 
 		
 		<br><p>
 		<input type="radio" name="rb_group1" id="rbLight" checked onclick="document.getElementById('dark-styles').disabled=true; window.location.search=window.location.search.replace('style=dark',''); "/> Light side

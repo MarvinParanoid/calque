@@ -88,9 +88,10 @@
 
         handler();
 
-        this.inputEl.onkeydown = handler;
-        this.inputEl.onkeyup = handler;
-        setInterval(handler, 50);
+        // 'input' covers typing, paste, cut, undo; the rest track caret movement.
+        ['input', 'keyup', 'mouseup', 'focus'].forEach(function (eventName) {
+            inputEl.addEventListener(eventName, handler);
+        });
 
 		document.getElementById('tinyurl').onclick = function() {
 			 document.getElementById('share').value = window.location.href;
