@@ -188,7 +188,7 @@
 			expression.processed = expression.processed.replace( /0b[01]+/g , function(match){ return  parseInt( match.substr(2,match.length), 2); } );
 			
             try {
-                expression.result = math.eval(expression.processed, scope);
+                expression.result = math.evaluate(expression.processed, scope);
             } catch (e) {
                 expression.error = detranslit(e.toString());
             }
