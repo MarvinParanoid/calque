@@ -1,6 +1,81 @@
 ﻿(function () {
+    // ---------- Expression sandbox hardening ----------
+    // Text comes from shared links, so expressions must not be able to change
+    // the global math.js state (it would outlive the line that did it) or
+    // freeze the tab by allocating huge structures.
+
+    var MAX_ELEMENTS = 1e6;      // largest matrix / range / set an expression may create
+    var MAX_RESULT_CHARS = 1000; // longer results are cut in the output
+
+    function disabled(name) {
+        return function () {
+            throw new Error('Function ' + name + ' is not available in Calque');
+        };
+    }
+
+    function count(value) {
+        if (value && value.isMatrix) value = value.valueOf();
+        if (!Array.isArray(value)) return 1;
+        return value.reduce(function (total, item) { return total + count(item); }, 0);
+    }
+
+    function product(dims) {
+        return dims.reduce(function (total, dim) { return total * Math.abs(Number(dim)); }, 1);
+    }
+
+    // zeros(2, 3), zeros([2, 3]), zeros(matrix([2, 3])), with an optional format string
+    function dimsOf(args) {
+        var first = args[0];
+        if (first && (Array.isArray(first) || first.isMatrix)) return [].concat(first.valueOf());
+        return Array.prototype.filter.call(args, function (arg) { return typeof arg !== 'string'; });
+    }
+
+    function rangeLength(args) {
+        if (typeof args[0] === 'string') {
+            var parts = args[0].split(':').map(Number); // "start:end" or "start:step:end"
+            args = parts.length === 3 ? [parts[0], parts[2], parts[1]] : parts;
+        }
+        var step = args.length > 2 && typeof args[2] !== 'boolean' ? args[2] : 1;
+        return math.number(math.abs(math.divide(math.subtract(args[1], args[0]), step)));
+    }
+
+    function limited(name, sizeOf) {
+        var original = math[name];
+        return function () {
+            var size;
+            try { size = sizeOf(arguments); } catch (e) { size = 0; } // let math.js report bad arguments
+            if (size > MAX_ELEMENTS) {
+                throw new Error('Result of ' + name + ' is too large (more than ' + MAX_ELEMENTS + ' elements)');
+            }
+            return original.apply(math, arguments);
+        };
+    }
+
+    math.import({
+        'import': disabled('import'),
+        createUnit: disabled('createUnit'),
+        config: disabled('config'),
+        zeros: limited('zeros', function (a) { return product(dimsOf(a)); }),
+        ones: limited('ones', function (a) { return product(dimsOf(a)); }),
+        identity: limited('identity', function (a) {
+            var dims = dimsOf(a);
+            return dims.length === 1 ? product(dims) * product(dims) : product(dims);
+        }),
+        // random(), random(max), random(min, max) are scalars; random(size, ...) is a matrix
+        random: limited('random', function (a) { return a[0] && typeof a[0] === 'object' ? product(dimsOf(a)) : 1; }),
+        randomInt: limited('randomInt', function (a) { return a[0] && typeof a[0] === 'object' ? product(dimsOf(a)) : 1; }),
+        range: limited('range', rangeLength),
+        resize: limited('resize', function (a) { return product(dimsOf([a[1]])); }),
+        matrixFromFunction: limited('matrixFromFunction', function (a) { return product(dimsOf([a[0]])); }),
+        kron: limited('kron', function (a) { return count(a[0]) * count(a[1]); }),
+        setCartesian: limited('setCartesian', function (a) { return count(a[0]) * count(a[1]); }),
+        setPowerset: limited('setPowerset', function (a) { return Math.pow(2, count(a[0])); })
+    }, { override: true });
+
+    // math.js identifiers can't contain Cyrillic, so letters of the whole
+    // Cyrillic block are encoded as _x<code>x_ before evaluation.
     function translit(text){
-        return text.replace(/[а-яА-ЯёЁ]/g, function (match) {
+        return text.replace(/[\u0400-\u04FF]/g, function (match) {
             return '_x' + match.charCodeAt() + 'x_';
         });
     }
@@ -36,6 +111,22 @@
         return 'e' + btoa(escape(data));
     };
 	
+    // String literals ("..." or '...') must be left as typed: no name
+    // rewriting, transliteration or assignment detection inside them.
+    var STRING_LITERAL = /("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')/;
+
+    function outsideStrings(code, fn) {
+        return code.split(STRING_LITERAL).map(function (part, i) {
+            return i % 2 ? part : fn(part);
+        }).join('');
+    }
+
+    function withoutStrings(code) {
+        return code.split(STRING_LITERAL).filter(function (part, i) {
+            return i % 2 === 0;
+        }).join('""');
+    }
+
     function escapeRegExp(text) {
         return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     }
@@ -125,10 +216,13 @@
             outputEl.scrollLeft = inputEl.scrollLeft;
         };
 
-        var handler = function () {
+        var handler = function (event) {
             this.updateActiveLine();
             this.input();
             syncScroll();
+            // Typing, paste, undo may put the caret outside the visible area
+            // after the layers were resized; scroll the editor to it.
+            if (event && event.type === 'input') this.revealCaret();
         }.bind(this);
 
         handler();
@@ -140,7 +234,116 @@
 
         inputEl.addEventListener('scroll', syncScroll);
         inputEl.addEventListener('keydown', autoIndent);
+
+        // Another Calque link opened in the same tab only changes the hash
+        // (no reload): load its text instead of overwriting it with ours.
+        // Our own updates use replaceState, which doesn't fire hashchange.
+        window.addEventListener('hashchange', function () {
+            var text = '';
+            try { text = decodeData(window.location.hash.slice(1)); } catch (e) {}
+            if (text !== inputEl.value) {
+                inputEl.value = text;
+                handler();
+            }
+        });
+
+        // The browser reveals the caret only up to its own box, ignoring the
+        // editor padding; keep the caret line fully visible on every caret move.
+        document.addEventListener('selectionchange', function () {
+            if (document.activeElement === inputEl) this.revealCaret();
+        }.bind(this));
+
+        // Font size depends on the viewport width, so sizes change on resize.
+        window.addEventListener('resize', function () {
+            this.updateSize();
+            syncScroll();
+        }.bind(this));
     }
+
+    // Editor layout: .interface is the scroll container; the textarea and the
+    // results layer on top of each other are sized to the content (CSS keeps
+    // them at least as large as the visible area), so both scroll together.
+    // Results are drawn further right than the text itself, which is why the
+    // textarea alone could not scroll to them.
+    Calque.prototype.metrics = function () {
+        var style = getComputedStyle(this.inputEl);
+        var ctx = this.measureCtx || (this.measureCtx = document.createElement('canvas').getContext('2d'));
+        ctx.font = style.fontStyle + ' ' + style.fontWeight + ' ' + style.fontSize + ' ' + style.fontFamily;
+        var tabWidth = ctx.measureText(' ').width * (parseInt(style.tabSize, 10) || 4);
+        return {
+            padTop: parseFloat(style.paddingTop),
+            padRight: parseFloat(style.paddingRight),
+            padBottom: parseFloat(style.paddingBottom),
+            padLeft: parseFloat(style.paddingLeft),
+            lineHeight: parseFloat(style.lineHeight),
+            // Rendered width of a line's text: real glyph widths (emoji, CJK,
+            // fallback fonts) and tab stops, like the textarea draws it.
+            textWidth: function (text) {
+                if (text.indexOf('\t') < 0) return ctx.measureText(text).width;
+                return text.split('\t').reduce(function (x, part, i) {
+                    if (i) x = (Math.floor(x / tabWidth + 1e-6) + 1) * tabWidth;
+                    return x + ctx.measureText(part).width;
+                }, 0);
+            }
+        };
+    };
+
+    Calque.prototype.updateSize = function () {
+        var output = this.outputEl;
+        var m = this.metrics();
+
+        var contentWidth = 0;
+        this.lines.forEach(function (line) {
+            contentWidth = Math.max(contentWidth, m.textWidth(line));
+        });
+        var left = output.getBoundingClientRect().left - output.scrollLeft + m.padLeft;
+        Array.prototype.forEach.call(output.querySelectorAll('.data'), function (data) {
+            contentWidth = Math.max(contentWidth, data.getBoundingClientRect().right - left);
+        });
+
+        var width = Math.ceil(m.padLeft + contentWidth + m.padRight) + 'px';
+        var height = Math.ceil(m.padTop + this.lines.length * m.lineHeight + m.padBottom) + 'px';
+        [this.inputEl, output].forEach(function (el) {
+            el.style.width = width;
+            el.style.height = height;
+        });
+    };
+
+    Calque.prototype.revealCaret = function () {
+        var input = this.inputEl;
+        var scroller = input.parentNode;
+        var m = this.metrics();
+        // The moving end of the selection: start when selecting backwards
+        var caret = input.selectionDirection === 'backward' ? input.selectionStart : input.selectionEnd;
+        var before = input.value.slice(0, caret);
+        var lineStart = before.lastIndexOf('\n') + 1;
+        var row = before.split('\n').length - 1;
+
+        var x = m.padLeft + m.textWidth(before.slice(lineStart)) - input.scrollLeft;
+        var y = m.padTop + row * m.lineHeight - input.scrollTop;
+
+        if (x - m.padLeft < scroller.scrollLeft) {
+            scroller.scrollLeft = x - m.padLeft;
+        } else if (x + m.padRight > scroller.scrollLeft + scroller.clientWidth) {
+            scroller.scrollLeft = x + m.padRight - scroller.clientWidth;
+        }
+        if (y - m.padTop < scroller.scrollTop) {
+            scroller.scrollTop = y - m.padTop;
+        } else if (y + m.lineHeight + m.padBottom > scroller.scrollTop + scroller.clientHeight) {
+            scroller.scrollTop = y + m.lineHeight + m.padBottom - scroller.clientHeight;
+        }
+    };
+
+    // Append text at the end of the document as an undoable edit (Ctrl+Z
+    // removes it), replacing trailing whitespace with a blank-line separator.
+    Calque.prototype.appendBlock = function (text) {
+        var input = this.inputEl;
+        var end = input.value.length;
+        var trimmed = input.value.replace(/\s+$/, '').length;
+        input.focus({ preventScroll: true });
+        replaceRange(input, trimmed, end, (trimmed ? '\n\n' : '') + text + '\n');
+        input.setSelectionRange(input.value.length, input.value.length);
+    };
 
     Calque.prototype.updateActiveLine = function () {
         var value = this.inputEl.value;
@@ -155,8 +358,9 @@
         }
 
         if (this.activeLine !== activeLine) {
+            var previous = this.activeLine;
             this.activeLine = activeLine;
-            this.repaint();
+            this.repaintRows([previous - 1, activeLine - 1]);
         }
     }
     
@@ -175,6 +379,19 @@
             this.recalc();
         }
     }
+
+    // Parsing is most of the evaluation cost, and on each keystroke only one
+    // line changes: keep compiled expressions by their text.
+    Calque.prototype.compile = function (code) {
+        var cache = this.compiled || (this.compiled = new Map());
+        var compiled = cache.get(code);
+        if (!compiled) {
+            compiled = math.compile(code); // throws on syntax errors, which are not cached
+            if (cache.size > 5000) cache.clear();
+            cache.set(code, compiled);
+        }
+        return compiled;
+    };
 
     Calque.prototype.recalc = function () {
         this.expressions = [];
@@ -205,7 +422,7 @@
                 var closed = sums.splice(expression.tab);
             }
 
-            assignedNames(expression.processed).forEach(function (name) {
+            assignedNames(withoutStrings(expression.processed)).forEach(function (name) {
                 addSpacevar(spacevars, name);
             });
 
@@ -215,6 +432,7 @@
 
                 addSpacevar(spacevars, name);
 
+                expression.isSum = true;
                 if (expression.tab === sums.length) {
                     sums.push(expression);
                 } else {
@@ -224,33 +442,46 @@
                 expression.processed = name + ' = 0';
             }
 			
-            spacevars.forEach(function (spacevar) {
-                expression.processed = expression.processed.replace(spacevar.regexp, spacevar.replaced);
+            // Hex/bin/octal literals (0xFF, 0b101, 0o17) are parsed by math.js itself.
+            expression.processed = outsideStrings(expression.processed, function (part) {
+                spacevars.forEach(function (spacevar) {
+                    if (part.indexOf(spacevar.original) !== -1) part = part.replace(spacevar.regexp, spacevar.replaced);
+                });
+                return translit(part);
             });
 
-            expression.processed = translit(expression.processed);
-			
-            expression.processed = expression.processed.replace( /0x[0-9A-Fa-f]+/g , function(match){ return parseInt( match, 16 ); } );
-			expression.processed = expression.processed.replace( /0b[01]+/g , function(match){ return  parseInt( match.substr(2,match.length), 2); } );
-			
             try {
-                expression.result = math.evaluate(expression.processed, scope);
+                expression.result = this.compile(expression.processed).evaluate(scope);
             } catch (e) {
                 expression.error = detranslit(e.toString());
             }
 
-            if (expression.result !== undefined) {
-                scope.last = expression.result;
+            var value = expression.result;
+
+            // An error line leaves 'last' pointing to the previous result
+            if (!expression.error && value !== undefined) {
+                scope.last = value;
             }
 
-            if (sums.length && expression.result && !expression.error) {
+            // Every value line (including 0 and other falsy values) is added to
+            // the open sums. Not added: errors, empty lines, function
+            // definitions, null, and sum headers themselves (their items are
+            // already counted). The total starts empty rather than at 0, so
+            // sums of values with units work.
+            var addable = !expression.error && !expression.isSum && value !== undefined
+                && value !== null && typeof value !== 'function';
+            if (sums.length && addable) {
                 sums.forEach(function (sum) {
                     if (!sum.error) {
                         try {
-                            sum.result = math.add(sum.result, expression.result);
-                            scope[translit(sum.variable)] = sum.result;
+                            sum.total = sum.total === undefined ? value : math.add(sum.total, value);
+                            sum.result = sum.total;
+                            scope[translit(sum.variable)] = sum.total;
                         } catch (e) {
                             sum.error = 'Error: Sum can not be calculated';
+                            // A failed sum has no value: don't leave the last
+                            // partial total in its variable.
+                            delete scope[translit(sum.variable)];
                         }
                     }
                 });
@@ -260,71 +491,107 @@
         this.repaint();
     };
 
-    Calque.prototype.repaint = function () {
-        var html = '';
+    // Rendering context shared by all rows of one repaint
+    Calque.prototype.renderContext = function () {
+        return {
+            metrics: this.metrics(),
+            dec: document.getElementById('checkDec').checked,
+            hex: document.getElementById('checkHex').checked,
+            bin: document.getElementById('checkBin').checked
+        };
+    };
 
-        this.lines.forEach(function (line, index) {
-            var expression = this.expressions.filter(function (expression) {
-                return expression.line === index;
-            })[0];
+    Calque.prototype.renderRow = function (index, ctx) {
+        var expression = this.expressions[index];
+        var type;
 
-            if (expression.error) {
-                if (this.activeLine === index + 1) {
-                    var type = 'empty';
-                } else {
-                    var type = 'error';
+        if (expression.error) {
+            // errors on the line being edited are hidden until the caret leaves it
+            type = this.activeLine === index + 1 ? 'empty' : 'error';
+        } else if (expression.result === undefined) {
+            type = 'empty';
+            for (var i = index; i < this.lines.length; i++) {
+                if (this.expressions[i].result !== undefined) {
+                    expression.tab = this.expressions[i].tab;
+                    break;
                 }
-            } else if (expression.result === undefined) {
-                var type = 'empty';
+            }
+        } else {
+            type = 'result';
+        }
 
-                for (var i = index; i < this.lines.length; i++) {
-                    if (this.expressions[i].result !== undefined) {
-                        expression.tab = this.expressions[i].tab;
-                        break;
-                    }
-                }
+        // Indentation guides ("| " per sum level) are drawn over the
+        // line's leading spaces; the result starts right after the text,
+        // at its measured width, so tabs and wide characters don't shift it.
+        var guides = '';
+        for (var g = 0; g < expression.tab; g++) guides += '| ';
+
+        // Each piece: [css class, text]; text is escaped when rendered.
+        var pieces = [];
+        if (type === 'result') {
+            if (expression.result === null) {
+                pieces.push(['value', 'null']);
+            } else if (expression.result instanceof Function) {
+                pieces.push(['fn', 'fn']);
             } else {
-                var type = 'result';
+                var result = formatResult(expression.result);
+                var hex = toBase(expression.result, '0x', 16);
+                var bin = toBase(expression.result, '0b', 2);
+                if (ctx.dec) pieces.push(['value', ' = ' + result]);
+                if (hex && ctx.hex) pieces.push(['alt', ' = ' + hex]);
+                if (bin && ctx.bin) pieces.push(['alt', ' = ' + bin]);
             }
+        }
+        if (type === 'error') pieces.push(['marker', '// '], ['message', expression.error]);
 
-            var prefix = '';
-            for (var s = 0; s <= expression.code.length; s++) prefix += ' ';
-            if (type === 'empty') for (var t = 0; t <= expression.tab; t++) prefix += '  ';
-            for (var i = 0; i < expression.tab; i++) prefix = prefix.replace(/(\| )?  /, '$1| ');
+        var classes = type + (this.activeLine === index + 1 ? ' active' : '');
+        var html = '<div class="' + classes + '">';
+        html += '<span class="prefix" data-prefix="' + escapeHtml(guides) + '"></span>';
+        if (pieces.length) {
+            var offset = ctx.metrics.textWidth(expression.code + ' ') - ctx.metrics.textWidth(guides);
+            html += '<span class="data" style="margin-left: ' + offset.toFixed(2) + 'px">';
+        } else {
+            html += '<span class="data">';
+        }
+        pieces.forEach(function (piece) {
+            html += '<span class="' + piece[0] + '">' + escapeHtml(piece[1]) + '</span>';
+        });
+        return html + '</span></div>';
+    };
 
-            if (type === 'error') prefix += '// ';
+    Calque.prototype.repaint = function () {
+        var ctx = this.renderContext();
+        var html = [];
+        for (var i = 0; i < this.lines.length; i++) html.push(this.renderRow(i, ctx));
 
-            // Each piece: [css class, text]; text is escaped when rendered.
-            var pieces = [];
-            if (type === 'result') {
-                if (expression.result === null) {
-                    pieces.push(['value', 'null']);
-                } else if (expression.result instanceof Function) {
-                    pieces.push(['fn', 'fn']);
-                } else {
-                    var result = expression.result.toString();
-                    var hex = toBase(result, '0x', 16);
-                    var bin = toBase(result, '0b', 2);
-                    if (document.getElementById('checkDec').checked) pieces.push(['value', ' = ' + result]);
-                    if (hex && document.getElementById('checkHex').checked) pieces.push(['alt', ' = ' + hex]);
-                    if (bin && document.getElementById('checkBin').checked) pieces.push(['alt', ' = ' + bin]);
-                }
+        // Typing usually changes one row (plus open sums): replace only rows
+        // whose markup changed, so the browser doesn't re-layout the whole document.
+        var rows = this.outputEl.children;
+        if (this.rowHtml && this.rowHtml.length === html.length && rows.length === html.length) {
+            for (var j = 0; j < html.length; j++) {
+                if (html[j] !== this.rowHtml[j]) rows[j].outerHTML = html[j];
             }
-            if (type === 'error') pieces.push(['message', expression.error]);
+        } else {
+            this.outputEl.innerHTML = html.join('');
+        }
+        this.rowHtml = html;
+        this.updateSize();
+    };
 
-            var classes = type + (this.activeLine === index + 1 ? ' active' : '');
-            var lineHtml = '<div class="' + classes + '">';
-            lineHtml += '<span class="prefix" data-prefix="' + escapeHtml(prefix) + '"></span>';
-            lineHtml += '<span class="data">';
-            pieces.forEach(function (piece) {
-                lineHtml += '<span class="' + piece[0] + '">' + escapeHtml(piece[1]) + '</span>';
-            });
-            lineHtml += '</span></div>';
-
-            html += lineHtml;
-        }.bind(this));
-
-        this.outputEl.innerHTML = html;
+    // Re-render only the given rows (e.g. when the caret moves to another line)
+    Calque.prototype.repaintRows = function (indexes) {
+        var rows = this.outputEl.children;
+        if (rows.length !== this.lines.length || this.expressions.length !== this.lines.length) {
+            return this.repaint();
+        }
+        var ctx = this.renderContext();
+        indexes.forEach(function (index) {
+            if (index < 0 || index >= rows.length) return;
+            var html = this.renderRow(index, ctx);
+            if (this.rowHtml) this.rowHtml[index] = html;
+            rows[index].outerHTML = html;
+        }, this);
+        this.updateSize();
     };
 	
 	function escapeHtml(text) {
@@ -336,13 +603,32 @@
 			.replace(/'/g, '&#39;');
 	}
 
+	// Non-integers are shown with 15 significant digits, which hides binary
+	// floating point noise (0.1 + 0.2 = 0.3, 5 cm + 2 cm = 7 cm). Integers are
+	// shown as is. Exponent thresholds match JavaScript's own number output.
+	var FORMAT = { precision: 15, lowerExp: -6, upperExp: 21 };
+
+	function formatResult(value) {
+		var text;
+		if (typeof value === 'number') {
+			text = Number.isInteger(value) || !isFinite(value) ? String(value) : math.format(value, FORMAT);
+		} else if (value && (value.isMatrix || Array.isArray(value)) && count(value) > MAX_RESULT_CHARS) {
+			// Formatting a huge matrix is slow and unreadable anyway: show its size
+			return 'matrix ' + math.size(value).valueOf().join(' × ');
+		} else if (value && (value.isUnit || value.isComplex || value.isMatrix || Array.isArray(value))) {
+			text = math.format(value, FORMAT);
+		} else {
+			text = String(value);
+		}
+		return text.length > MAX_RESULT_CHARS ? text.slice(0, MAX_RESULT_CHARS) + '…' : text;
+	}
+
 	// Hex/bin only make sense for integers: skip units, complex numbers,
 	// booleans, fractions and so on instead of showing 0xNAN or a rounded value.
-	function toBase(str, prefix, base) {
-		var number = Number(str);
-		if (!Number.isSafeInteger(number)) return null;
-		var sign = number < 0 ? '-' : '';
-		return sign + prefix + Math.abs(number).toString(base).toUpperCase();
+	function toBase(value, prefix, base) {
+		if (typeof value !== 'number' || !Number.isSafeInteger(value)) return null;
+		var sign = value < 0 ? '-' : '';
+		return sign + prefix + Math.abs(value).toString(base).toUpperCase();
 	}
 
     window.Calque = Calque;
