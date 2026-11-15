@@ -1,6 +1,6 @@
 ﻿(function () {
     function translit(text){
-        return text.replace(/[а-яА-Я]/g, function (match) {
+        return text.replace(/[а-яА-ЯёЁ]/g, function (match) {
             return '_x' + match.charCodeAt() + 'x_';
         });
     }
@@ -209,7 +209,7 @@
                     if (!sum.error) {
                         try {
                             sum.result = math.add(sum.result, expression.result);
-                            scope[sum.variable] = sum.result;
+                            scope[translit(sum.variable)] = sum.result;
                         } catch (e) {
                             sum.error = 'Error: Sum can not be calculated';
                         }
