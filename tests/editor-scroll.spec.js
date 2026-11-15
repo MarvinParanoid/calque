@@ -43,9 +43,7 @@ for (const width of [360, 390]) {
                 const lines = input.value.split('\n');
                 return [...document.querySelectorAll('#output > div')].map((row, i) => {
                     const data = row.querySelector('.data').getBoundingClientRect();
-                    // error messages are preceded by a "// " marker
-                    const prefix = lines[i] + ' ' + (row.classList.contains('error') ? '// ' : '');
-                    const expectedX = inputRect.left + parseFloat(style.paddingLeft) + ctx.measureText(prefix).width;
+                    const expectedX = inputRect.left + parseFloat(style.paddingLeft) + ctx.measureText(lines[i] + ' ').width;
                     const expectedY = inputRect.top + parseFloat(style.paddingTop) + i * parseFloat(style.lineHeight);
                     return Math.max(Math.abs(data.left - expectedX), Math.abs(row.getBoundingClientRect().top - expectedY));
                 });

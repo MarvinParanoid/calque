@@ -159,6 +159,11 @@ a:focus-visible {
     padding: 0 var(--editor-pad-x);
 }
 
+/* Rows for blank lines have no text; keep them one line tall */
+.interface .output > div::after {
+    content: "\200b";
+}
+
 .interface .output > div.active {
     background: var(--active-line);
     box-shadow: inset 2px 0 var(--accent);
@@ -190,7 +195,14 @@ a:focus-visible {
 
 .interface .output .error .data {
     color: var(--error);
+}
+
+.interface .output .error .message {
     font-size: 0.85em;
+}
+
+.interface .output .error .marker {
+    color: var(--faint);
 }
 
 /* ---------- Sidebar ---------- */

@@ -12,7 +12,7 @@ test('Clipboard API success shows Copied! and copies the URL', async ({ page, co
 
     await expect(button(page)).toHaveText('Copied!');
     await expect(button(page)).toHaveClass(/copied/);
-    expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(page.url());
+    expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(await page.evaluate(() => location.href));
     await expect(button(page)).toHaveText('Copy link', { timeout: 3000 });
 });
 
@@ -31,7 +31,7 @@ test('falls back to execCommand when the Clipboard API is refused', async ({ pag
     await button(page).click();
 
     await expect(button(page)).toHaveText('Copied!');
-    expect(await page.evaluate(() => window.__copied)).toBe(page.url());
+    expect(await page.evaluate(() => window.__copied)).toBe(await page.evaluate(() => location.href));
 });
 
 test('shows a failure state when copying is impossible', async ({ page }) => {

@@ -235,6 +235,18 @@
         inputEl.addEventListener('scroll', syncScroll);
         inputEl.addEventListener('keydown', autoIndent);
 
+        // Another Calque link opened in the same tab only changes the hash
+        // (no reload): load its text instead of overwriting it with ours.
+        // Our own updates use replaceState, which doesn't fire hashchange.
+        window.addEventListener('hashchange', function () {
+            var text = '';
+            try { text = decodeData(window.location.hash.slice(1)); } catch (e) {}
+            if (text !== inputEl.value) {
+                inputEl.value = text;
+                handler();
+            }
+        });
+
         // The browser reveals the caret only up to its own box, ignoring the
         // editor padding; keep the caret line fully visible on every caret move.
         document.addEventListener('selectionchange', function () {
@@ -257,14 +269,21 @@
         var style = getComputedStyle(this.inputEl);
         var ctx = this.measureCtx || (this.measureCtx = document.createElement('canvas').getContext('2d'));
         ctx.font = style.fontStyle + ' ' + style.fontWeight + ' ' + style.fontSize + ' ' + style.fontFamily;
+        var tabWidth = ctx.measureText(' ').width * (parseInt(style.tabSize, 10) || 4);
         return {
             padTop: parseFloat(style.paddingTop),
             padRight: parseFloat(style.paddingRight),
             padBottom: parseFloat(style.paddingBottom),
             padLeft: parseFloat(style.paddingLeft),
             lineHeight: parseFloat(style.lineHeight),
+            // Rendered width of a line's text: real glyph widths (emoji, CJK,
+            // fallback fonts) and tab stops, like the textarea draws it.
             textWidth: function (text) {
-                return ctx.measureText(text.replace(/\t/g, '    ')).width;
+                if (text.indexOf('\t') < 0) return ctx.measureText(text).width;
+                return text.split('\t').reduce(function (x, part, i) {
+                    if (i) x = (Math.floor(x / tabWidth + 1e-6) + 1) * tabWidth;
+                    return x + ctx.measureText(part).width;
+                }, 0);
             }
         };
     };
@@ -313,6 +332,17 @@
         } else if (y + m.lineHeight + m.padBottom > scroller.scrollTop + scroller.clientHeight) {
             scroller.scrollTop = y + m.lineHeight + m.padBottom - scroller.clientHeight;
         }
+    };
+
+    // Append text at the end of the document as an undoable edit (Ctrl+Z
+    // removes it), replacing trailing whitespace with a blank-line separator.
+    Calque.prototype.appendBlock = function (text) {
+        var input = this.inputEl;
+        var end = input.value.length;
+        var trimmed = input.value.replace(/\s+$/, '').length;
+        input.focus({ preventScroll: true });
+        replaceRange(input, trimmed, end, (trimmed ? '\n\n' : '') + text + '\n');
+        input.setSelectionRange(input.value.length, input.value.length);
     };
 
     Calque.prototype.updateActiveLine = function () {
@@ -449,6 +479,7 @@
 
     Calque.prototype.repaint = function () {
         var html = '';
+        var m = this.metrics();
 
         this.lines.forEach(function (line, index) {
             var expression = this.expressions.filter(function (expression) {
@@ -474,12 +505,11 @@
                 var type = 'result';
             }
 
-            var prefix = '';
-            for (var s = 0; s <= expression.code.length; s++) prefix += ' ';
-            if (type === 'empty') for (var t = 0; t <= expression.tab; t++) prefix += '  ';
-            for (var i = 0; i < expression.tab; i++) prefix = prefix.replace(/(\| )?  /, '$1| ');
-
-            if (type === 'error') prefix += '// ';
+            // Indentation guides ("| " per sum level) are drawn over the
+            // line's leading spaces; the result starts right after the text,
+            // at its measured width, so tabs and wide characters don't shift it.
+            var guides = '';
+            for (var g = 0; g < expression.tab; g++) guides += '| ';
 
             // Each piece: [css class, text]; text is escaped when rendered.
             var pieces = [];
@@ -497,12 +527,17 @@
                     if (bin && document.getElementById('checkBin').checked) pieces.push(['alt', ' = ' + bin]);
                 }
             }
-            if (type === 'error') pieces.push(['message', expression.error]);
+            if (type === 'error') pieces.push(['marker', '// '], ['message', expression.error]);
 
             var classes = type + (this.activeLine === index + 1 ? ' active' : '');
             var lineHtml = '<div class="' + classes + '">';
-            lineHtml += '<span class="prefix" data-prefix="' + escapeHtml(prefix) + '"></span>';
-            lineHtml += '<span class="data">';
+            lineHtml += '<span class="prefix" data-prefix="' + escapeHtml(guides) + '"></span>';
+            if (pieces.length) {
+                var offset = m.textWidth(expression.code + ' ') - m.textWidth(guides);
+                lineHtml += '<span class="data" style="margin-left: ' + offset.toFixed(2) + 'px">';
+            } else {
+                lineHtml += '<span class="data">';
+            }
             pieces.forEach(function (piece) {
                 lineHtml += '<span class="' + piece[0] + '">' + escapeHtml(piece[1]) + '</span>';
             });

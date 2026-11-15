@@ -39,13 +39,10 @@
                     var code = Array.prototype.map.call(card.querySelectorAll('pre'), function (pre) {
                         return pre.textContent;
                     }).join('\n');
-                    var value = input.value.replace(/\s+$/, '');
-                    input.value = (value ? value + '\n\n' : '') + code + '\n';
-                    // Scrolling is done explicitly below: whether focus() scrolls
+                    // Undoable insert; recalculates and scrolls the editor to the caret.
+                    // Page scrolling is done explicitly below: whether focus() scrolls
                     // the page differs between browsers (iOS Safari often doesn't).
-                    input.focus({ preventScroll: true });
-                    input.setSelectionRange(input.value.length, input.value.length);
-                    input.dispatchEvent(new Event('input')); // recalculates and scrolls the editor to the caret
+                    window.calque.appendBlock(code);
 
                     // On narrow screens the editor is above the sidebar: bring it back into view.
                     var editor = input.parentNode;
