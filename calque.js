@@ -1,6 +1,6 @@
 ﻿(function () {
     function translit(text){
-        return text.replace(/[а-яА-Я]/g, function (match) {
+        return text.replace(/[а-яА-ЯёЁ]/g, function (match) {
             return '_x' + match.charCodeAt() + 'x_';
         });
     }
@@ -11,10 +11,10 @@
         });
     }
 	
-	var decodeData = function(encodedData) {
+	function decodeData(encodedData) {
         if (encodedData.length > 1) {
             var encodingType = encodedData[0];
-            encodedData = encodedData.slice(1);
+            encodedData = encodedData.slice(1);     
             if ('a' == encodingType) {
                 return atob(encodedData);
             }
@@ -25,7 +25,7 @@
         return '';
     };
 	
-    var encodeData = function(data) {
+    function encodeData(data) {
         if (!data.length) return '';
         try {
             var encodedData = btoa(data);
@@ -36,72 +36,112 @@
         return 'e' + btoa(escape(data));
     };
 	
+    function escapeRegExp(text) {
+        return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    }
+
+    // Names on the left of assignment '=' (not ==, <=, >=, !=).
+    // For function definitions "f(x) = ..." the name is the part before '('.
+    function assignedNames(code) {
+        return code.split(/(?<![=<>!])=(?!=)/).slice(0, -1).map(function (part) {
+            var paren = part.indexOf('(');
+            return (paren >= 0 ? part.substr(0, paren) : part).trim();
+        });
+    }
+
+    // Variable names may contain spaces ("my var"); such names are
+    // rewritten to "my_var" before evaluation.
+    function addSpacevar(spacevars, name) {
+        if (!/^[\wа-яА-ЯёЁ]+( +[\wа-яА-ЯёЁ]+)+$/.test(name)) return;
+        spacevars.splice(0, 0, {
+            original: name,
+            replaced: name.replace(/ /g, '_'),
+            regexp: new RegExp(escapeRegExp(name), 'g')
+        });
+    }
+
+    var INDENT = '  ';
+
+    // Replace text in [start, end) keeping the browser undo stack (Ctrl+Z).
+    function replaceRange(el, start, end, text) {
+        el.setSelectionRange(start, end);
+        // insertText('') misplaces the caret in Chrome, so deletions use 'delete'
+        var ok = text ? document.execCommand('insertText', false, text)
+                      : start === end || document.execCommand('delete');
+        if (!ok) {
+            el.setRangeText(text, start, end, 'end');
+            el.dispatchEvent(new Event('input'));
+        }
+    }
+
+    // Editor-like indentation for sums:
+    // - Enter after "name:" opens an indented line;
+    // - Enter keeps the current indent;
+    // - Enter on an empty indented line steps one level out;
+    // - Backspace inside the indent removes a whole level.
+    function autoIndent(event) {
+        var el = event.target;
+        if (event.ctrlKey || event.metaKey || event.altKey || event.isComposing) return;
+        if (el.selectionStart !== el.selectionEnd) return;
+
+        var caret = el.selectionStart;
+        var lineStart = el.value.lastIndexOf('\n', caret - 1) + 1;
+        var before = el.value.slice(lineStart, caret);
+        var indent = before.match(/^ */)[0];
+
+        if (event.key === 'Enter' && !event.shiftKey) {
+            event.preventDefault();
+            if (before.length && before === indent) {
+                var outdented = indent.slice(0, Math.max(0, indent.length - INDENT.length));
+                replaceRange(el, lineStart, caret, outdented);
+            } else {
+                if (before.trim().slice(-1) === ':') indent += INDENT;
+                replaceRange(el, caret, caret, '\n' + indent);
+            }
+        } else if (event.key === 'Backspace' && before.length && before === indent) {
+            event.preventDefault();
+            var remove = before.length % INDENT.length || INDENT.length;
+            replaceRange(el, caret - remove, caret, '');
+        }
+    }
+
     function Calque(inputEl, outputEl) {
         this.inputEl = inputEl;
         this.outputEl = outputEl;
-        this.parentEl = inputEl.parentNode;
 
         this.raw = '';
         this.lines = [];
         this.expressions = [];
         this.activeLine = 0;
-		var oldValue = null;
-		var oldSelectionStart = null;
-		
-		if ( window.location.search.match(/style=dark/)){
-			document.getElementById('dark-styles').disabled  = false;
-			document.getElementById('rbDark').checked  = true;
-		}
-		
-		if (window.location.hash.length) {    
+
+		if (window.location.hash.length) {
 			try {
 				inputEl.value = decodeData(window.location.hash.slice(1));
 			} catch(e) {}
 		}
 		
+        var syncScroll = function () {
+            outputEl.scrollTop = inputEl.scrollTop;
+            outputEl.scrollLeft = inputEl.scrollLeft;
+        };
+
         var handler = function () {
-			var newValue = inputEl.value;
-			if (newValue !== oldValue) {
-				oldValue = newValue;
-				window.location.hash = encodeData(newValue);
-			}
-			var newSelectionStart = inputEl.selectionStart;
-			if (newSelectionStart !== oldSelectionStart) {
-				oldSelectionStart = newSelectionStart;
-				window.location.hash = encodeData(newValue);
-			}
-		
             this.updateActiveLine();
             this.input();
-            this.inputEl.style.height = Math.max(
-                this.outputEl.clientHeight,
-                this.parentEl.clientHeight
-            ) + 'px';
-			
+            syncScroll();
         }.bind(this);
 
         handler();
 
-        this.inputEl.onkeydown = handler;
-        this.inputEl.onkeyup = handler;
-        setInterval(handler, 50);
+        // 'input' covers typing, paste, cut, undo; the rest track caret movement.
+        ['input', 'keyup', 'mouseup', 'focus'].forEach(function (eventName) {
+            inputEl.addEventListener(eventName, handler);
+        });
 
-        this.outputEl.scrollTop = this.inputEl.scrollTop;
-		
-		var shareEl = document.getElementById('share');
-		var tinyurlEl = document.getElementById('tinyurl');
-		tinyurlEl.onclick = function() {
-			shareEl.value = window.location.href;
-			return true;
-		}
-		
-		outputEl.scrollTop = inputEl.scrollTop;
-		inputEl.onscroll = function () {
-			outputEl.scrollTop = inputEl.scrollTop;
-		};
-
+        inputEl.addEventListener('scroll', syncScroll);
+        inputEl.addEventListener('keydown', autoIndent);
     }
-	
+
     Calque.prototype.updateActiveLine = function () {
         var value = this.inputEl.value;
         var selectionStart = this.inputEl.selectionStart;
@@ -119,23 +159,27 @@
             this.repaint();
         }
     }
+    
+    Calque.prototype.updateHash = function(data) {
+        // replaceState instead of location.hash: don't add a history entry per keystroke
+        var hash = encodeData(data);
+        history.replaceState(null, '', hash ? '#' + hash : window.location.pathname + window.location.search);
+    }
 
     Calque.prototype.input = function () {
         var raw = this.inputEl.value;
         if (raw !== this.raw) {
             this.raw = raw;
             this.lines = this.raw.split("\n");
+            this.updateHash(this.raw);
             this.recalc();
         }
     }
 
     Calque.prototype.recalc = function () {
         this.expressions = [];
-
         var spacevars = [];
-
         var sums = [];
-
         var scope = {
             last: null
         };
@@ -161,35 +205,15 @@
                 var closed = sums.splice(expression.tab);
             }
 
-            if (expression.processed.indexOf('=') > 0) {
-                var names = [];
-
-                expression.processed.split('=').slice(0, -1).forEach(function (part) {
-                    if (expression.processed.indexOf('(') > 0) {
-                        names.push(part.substr(0, part.indexOf('(')).trim());
-                    } else {
-                        names.push(part.trim());
-                    }
-                });
-				
-                names.forEach(function (name) {
-                    spacevars.splice(0, 0, {
-                        original: name,
-                        replaced: name.replace(/ /g, '_'),
-                        regexp: new RegExp(name, 'g')
-                    });
-                });
-            }
+            assignedNames(expression.processed).forEach(function (name) {
+                addSpacevar(spacevars, name);
+            });
 
             if (expression.processed.trim().slice(-1) === ':') {
                 var name = expression.processed.trim().slice(0, -1).trim();
-                expression.variable = translit(name.replace(/ /g, '_'));
+                expression.variable = name.replace(/ /g, '_');
 
-                spacevars.splice(0, 0, {
-                    original: name,
-                    replaced: name.replace(/ /g, '_'),
-                    regexp: new RegExp(name, 'g')
-                });
+                addSpacevar(spacevars, name);
 
                 if (expression.tab === sums.length) {
                     sums.push(expression);
@@ -206,19 +230,11 @@
 
             expression.processed = translit(expression.processed);
 			
-			re = /0x[0-9A-Fa-f]+/  ;
-			while ( (arr = expression.processed.match(re)) != null ){
-				expression.processed = expression.processed.replace( arr[0],  parseInt( arr[0], 16) );	
-			}
-			
-			re = /0b[01]+/  ;
-			while ( (arr = expression.processed.match(re)) != null ){
-				binstr = arr[0].substr(2,arr[0].length);
-				expression.processed = expression.processed.replace( arr[0],  parseInt( binstr, 2) );	
-			}
+            expression.processed = expression.processed.replace( /0x[0-9A-Fa-f]+/g , function(match){ return parseInt( match, 16 ); } );
+			expression.processed = expression.processed.replace( /0b[01]+/g , function(match){ return  parseInt( match.substr(2,match.length), 2); } );
 			
             try {
-                expression.result = math.eval(expression.processed, scope);
+                expression.result = math.evaluate(expression.processed, scope);
             } catch (e) {
                 expression.error = detranslit(e.toString());
             }
@@ -232,7 +248,7 @@
                     if (!sum.error) {
                         try {
                             sum.result = math.add(sum.result, expression.result);
-                            scope[sum.variable] = sum.result;
+                            scope[translit(sum.variable)] = sum.result;
                         } catch (e) {
                             sum.error = 'Error: Sum can not be calculated';
                         }
@@ -276,35 +292,34 @@
             if (type === 'empty') for (var t = 0; t <= expression.tab; t++) prefix += '  ';
             for (var i = 0; i < expression.tab; i++) prefix = prefix.replace(/(\| )?  /, '$1| ');
 
-            if (type === 'result') {
-                if (expression.result instanceof Function) {
-                    prefix += 'fn';
-                } else {
-                    prefix += '';
-                }
-            }
             if (type === 'error') prefix += '// ';
 
-            var data = '';
+            // Each piece: [css class, text]; text is escaped when rendered.
+            var pieces = [];
             if (type === 'result') {
                 if (expression.result === null) {
-                    data = 'null';
+                    pieces.push(['value', 'null']);
                 } else if (expression.result instanceof Function) {
-                    var source = expression.result.toString();
-                    data = '';
+                    pieces.push(['fn', 'fn']);
                 } else {
-                    result = expression.result.toString();
-					if (document.getElementById("checkDec").checked) data = " = " + result;
-					if (document.getElementById("checkHex").checked) data+= " = " + strDecTo(result,"0x",16);
-					if (document.getElementById("checkBin").checked) data+= " = " + strDecTo(result,"0b",2);
+                    var result = expression.result.toString();
+                    var hex = toBase(result, '0x', 16);
+                    var bin = toBase(result, '0b', 2);
+                    if (document.getElementById('checkDec').checked) pieces.push(['value', ' = ' + result]);
+                    if (hex && document.getElementById('checkHex').checked) pieces.push(['alt', ' = ' + hex]);
+                    if (bin && document.getElementById('checkBin').checked) pieces.push(['alt', ' = ' + bin]);
                 }
-            };
-            if (type === 'error') data = expression.error;
+            }
+            if (type === 'error') pieces.push(['message', expression.error]);
 
-            var lineHtml = '<div class="' + type + '">';
-            lineHtml += '<span class="prefix" data-prefix="' + prefix + '"></span>';
-            lineHtml += '<span class="data">' + data + '</span>';
-            lineHtml += '</div>';
+            var classes = type + (this.activeLine === index + 1 ? ' active' : '');
+            var lineHtml = '<div class="' + classes + '">';
+            lineHtml += '<span class="prefix" data-prefix="' + escapeHtml(prefix) + '"></span>';
+            lineHtml += '<span class="data">';
+            pieces.forEach(function (piece) {
+                lineHtml += '<span class="' + piece[0] + '">' + escapeHtml(piece[1]) + '</span>';
+            });
+            lineHtml += '</span></div>';
 
             html += lineHtml;
         }.bind(this));
@@ -312,8 +327,22 @@
         this.outputEl.innerHTML = html;
     };
 	
-	function strDecTo(str,prefix,notation){
-		return prefix+Math.round(Number(str)).toString(notation).toUpperCase();
+	function escapeHtml(text) {
+		return String(text)
+			.replace(/&/g, '&amp;')
+			.replace(/</g, '&lt;')
+			.replace(/>/g, '&gt;')
+			.replace(/"/g, '&quot;')
+			.replace(/'/g, '&#39;');
+	}
+
+	// Hex/bin only make sense for integers: skip units, complex numbers,
+	// booleans, fractions and so on instead of showing 0xNAN or a rounded value.
+	function toBase(str, prefix, base) {
+		var number = Number(str);
+		if (!Number.isSafeInteger(number)) return null;
+		var sign = number < 0 ? '-' : '';
+		return sign + prefix + Math.abs(number).toString(base).toUpperCase();
 	}
 
     window.Calque = Calque;
