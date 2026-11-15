@@ -1,34 +1,97 @@
+:root {
+    --font-ui: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --font-mono: ui-monospace, "JetBrains Mono", "SF Mono", "Cascadia Code", Menlo, Consolas, "Liberation Mono", monospace;
+
+    --sidebar-width: 340px;
+    --editor-pad-x: 32px;
+    --editor-pad-y: 28px;
+
+    --bg: #fdfcfa;
+    --panel: #f5f3ef;
+    --card: #ffffff;
+    --border: #e7e3dc;
+    --text: #1f2328;
+    --muted: #6b6f76;
+    --faint: #d9d4cb;
+    --accent: #0f7b6c;
+    --accent-soft: #e0f2ee;
+    --alt: #a3a7ad;
+    --error: #c4441c;
+    --active-line: #f4f1ea;
+    --selection: #cfe8e2;
+}
+
+:root[data-theme="dark"] {
+    --bg: #15171c;
+    --panel: #1b1e24;
+    --card: #21252c;
+    --border: #2c313a;
+    --text: #e4e6ea;
+    --muted: #8d95a1;
+    --faint: #363b45;
+    --accent: #5fd4bf;
+    --accent-soft: #1d3a36;
+    --alt: #5d6470;
+    --error: #f2836b;
+    --active-line: #1c1f26;
+    --selection: #23433e;
+}
+
+* {
+    box-sizing: border-box;
+}
+
+html, body {
+    height: 100%;
+}
+
 body {
     margin: 0;
-    padding: 0;
-	overflow: hidden;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-ui);
+    -webkit-font-smoothing: antialiased;
+    overflow: hidden;
 }
+
+::selection {
+    background: var(--selection);
+}
+
+a {
+    color: var(--accent);
+    text-decoration: none;
+}
+
+a:hover {
+    text-decoration: underline;
+}
+
+.app {
+    display: grid;
+    grid-template-columns: 1fr var(--sidebar-width);
+    height: 100%;
+}
+
+/* ---------- Editor: transparent textarea on top of rendered results ---------- */
 
 .interface {
-    position: absolute;
-    top: 0;
-    right: 350px;
-    bottom: 0;
-    left: 0;
-    height: 100%;
-	
-	box-shadow: 0 0 50px rgba(0, 0, 0, 0.15);
-	box-sizing: border-box;
+    position: relative;
+    min-width: 0;
+    background: var(--bg);
 }
 
-.interface .input, .interface .output {
+.interface .input,
+.interface .output {
     position: absolute;
-    top: 0;
-    right: 0;
-    left: 0;
-    width: 100%;
-	height: 100%;
-    font-family: monospace;
+    inset: 0;
+    margin: 0;
+    padding: var(--editor-pad-y) var(--editor-pad-x);
+    font-family: var(--font-mono);
     font-size: 16px;
-    line-height: 1.5;
-    padding: 20px;
-    box-sizing: border-box;
+    line-height: 1.75;
     white-space: pre;
+    tab-size: 4;
 }
 
 .interface .input {
@@ -37,62 +100,369 @@ body {
     outline: none;
     background: none;
     resize: none;
+    color: var(--text);
+    caret-color: var(--accent);
+}
+
+.interface .input::placeholder {
+    color: var(--alt);
 }
 
 .interface .output {
     overflow: hidden;
+    pointer-events: none;
 }
 
-.interface .output div {
-    display: block;
+.interface .output > div {
+    margin: 0 calc(-1 * var(--editor-pad-x));
+    padding: 0 var(--editor-pad-x);
 }
 
-.interface .output .prefix:before {
+.interface .output > div.active {
+    background: var(--active-line);
+    box-shadow: inset 3px 0 var(--accent);
+}
+
+.interface .output .prefix::before {
     content: attr(data-prefix);
-    color: #E9E9E9;
+    color: var(--faint);
 }
 
 .interface .output .data {
-    z-index: 1;
     position: relative;
+    z-index: 1;
 }
 
-.interface .output .result {
-    color: silver;
+.interface .output .value {
+    color: var(--accent);
+    font-weight: 600;
 }
 
-.interface .output .error {
-    color: red;
+.interface .output .alt {
+    color: var(--alt);
 }
+
+.interface .output .fn {
+    color: var(--alt);
+    font-style: italic;
+}
+
+.interface .output .error .data {
+    color: var(--error);
+    font-size: 0.85em;
+}
+
+/* ---------- Sidebar ---------- */
 
 .info {
+    display: flex;
+    flex-direction: column;
+    gap: 28px;
+    padding: 32px 28px;
+    overflow: auto;
+    background: var(--panel);
+    border-left: 1px solid var(--border);
+    font-size: 14px;
+    line-height: 1.5;
+}
+
+.brand {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+}
+
+.brand h1 {
+    margin: 0;
+    font-size: 26px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+}
+
+.tagline {
+    margin: 2px 0 0;
+    color: var(--muted);
+}
+
+.icon-link {
+    display: flex;
+    padding: 6px;
+    margin: -2px -6px 0 0;
+    border-radius: 8px;
+    color: var(--muted);
+}
+
+.icon-link:hover {
+    color: var(--text);
+    background: var(--card);
+}
+
+.settings {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.setting {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.label {
+    color: var(--muted);
+}
+
+.chips {
+    display: inline-flex;
+    padding: 3px;
+    gap: 2px;
+    border-radius: 9px;
+    background: var(--card);
+    border: 1px solid var(--border);
+}
+
+.chip {
+    position: relative;
+    cursor: pointer;
+}
+
+.chip input {
     position: absolute;
+    opacity: 0;
+    pointer-events: none;
+}
+
+.chip span {
+    display: block;
+    padding: 3px 11px;
+    border-radius: 6px;
+    color: var(--muted);
+    font-size: 13px;
+    user-select: none;
+    transition: background-color 0.15s, color 0.15s;
+}
+
+.chip:hover span {
+    color: var(--text);
+}
+
+.chip input:checked + span {
+    background: var(--accent-soft);
+    color: var(--accent);
+    font-weight: 600;
+}
+
+.chip input:focus-visible + span {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+}
+
+.examples h2 {
+    margin: 0 0 8px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--muted);
+}
+
+.examples h2:not(:first-child) {
+    margin-top: 20px;
+}
+
+.card {
+    padding: 8px 12px;
+    border-radius: 10px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    cursor: pointer;
+    transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.card:hover {
+    border-color: var(--accent);
+}
+
+.card:focus-visible {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.note {
+    margin: 0 0 8px;
+    color: var(--muted);
+    font-size: 12.5px;
+}
+
+.note code {
+    padding: 1px 5px;
+    border-radius: 4px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    font-family: var(--font-mono);
+    color: var(--text);
+}
+
+.examples > .note:first-child {
+    margin-bottom: 16px;
+}
+
+.card pre {
+    display: flex;
+    margin: 0;
+    font-family: var(--font-mono);
+    font-size: 12.5px;
+    line-height: 1.8;
+    white-space: pre;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* Results are output, not code: push them to the right edge and dim them */
+.card pre::after {
+    content: attr(data-result);
+    margin-left: auto;
+    padding-left: 12px;
+    color: var(--accent);
+    opacity: 0.75;
+}
+
+.button {
+    width: 100%;
+    padding: 9px 14px;
+    border: none;
+    border-radius: 9px;
+    background: var(--accent);
+    color: var(--bg);
+    font: 600 14px var(--font-ui);
+    cursor: pointer;
+    transition: filter 0.15s;
+}
+
+.button:hover {
+    filter: brightness(1.08);
+}
+
+.button:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+}
+
+.button.copied {
+    background: var(--accent-soft);
+    color: var(--accent);
+}
+
+.hint {
+    margin: 8px 0 0;
+    color: var(--muted);
+    font-size: 12.5px;
+    text-align: center;
+}
+
+.credits {
+    margin-top: auto;
+    padding-top: 16px;
+    border-top: 1px solid var(--border);
+    color: var(--muted);
+    font-size: 12.5px;
+}
+
+.credits p {
+    margin: 0 0 4px;
+}
+
+/* ---------- "Fork me on GitHub" corner ribbon (pure CSS, follows the theme) ---------- */
+
+.fork-ribbon {
+    position: fixed;
     top: 0;
     right: 0;
-    bottom: 0;
-    height: 100%;
-    width: 350px;
-    padding: 40px;
-    box-sizing: border-box;
-    overflow: auto;
-    font-family: Arial;
+    z-index: 10;
+    width: 150px;
+    height: 150px;
+    overflow: hidden;
+    pointer-events: none;
 }
 
-.info h1 {
+.fork-ribbon span {
+    position: absolute;
+    top: 36px;
+    right: -46px;
+    width: 200px;
+    transform: rotate(45deg);
+    background: var(--accent);
+    color: var(--bg);
+    text-align: center;
+    font: 600 12px/30px var(--font-ui);
+    letter-spacing: 0.04em;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
+    pointer-events: auto;
+    transition: filter 0.15s;
+}
+
+.fork-ribbon:hover {
+    text-decoration: none;
+}
+
+.fork-ribbon:hover span {
+    filter: brightness(1.1);
+}
+
+.fork-ribbon:focus-visible span {
+    outline: 2px solid var(--text);
+    outline-offset: 2px;
+}
+
+/* The ribbon replaces the header icon on wide screens */
+.brand .icon-link {
+    display: none;
+}
+
+/* ---------- Narrow screens: editor on top, sidebar below ---------- */
+
+@media (max-width: 800px) {
+    :root {
+        --editor-pad-x: 16px;
+        --editor-pad-y: 16px;
+    }
+
+    body {
+        overflow: auto;
+    }
+
+    .app {
+        grid-template-columns: 1fr;
+        grid-template-rows: 60vh auto;
+        height: auto;
+    }
+
+    .interface {
+        border-bottom: 1px solid var(--border);
+    }
+
+    .interface .input,
+    .interface .output {
+        font-size: 15px;
+    }
+
+    .info {
+        border-left: none;
+        padding: 24px 16px;
+    }
+
+    .fork-ribbon {
+        display: none;
+    }
+
+    .brand .icon-link {
+        display: flex;
+    }
+}
+
+.examples > .note:first-child + h2 {
     margin-top: 0;
-    margin-bottom: 0px;
-}
-
-.info h2 {
-    margin-bottom: 0px;
-}
-
-.info hr {
-    border: 1px solid #E6E6E6;
-    border-bottom: none;
-}
-
-.info pre:after {
-    content: attr(data-result);
-    color: grey;
 }

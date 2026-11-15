@@ -2,68 +2,191 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Calque</title>
-    <link rel="icon" type='image/png' href="favicon.png">
-    <link rel="stylesheet" href="style.css"  id="light-styles">
-	<link rel="stylesheet" href="style_dark.css"  id="dark-styles">
+    <link rel="icon" type="image/png" href="favicon.png">
+    <link rel="stylesheet" href="style.css">
+    <script>
+        // Theme: ?style=dark|light in URL, then saved choice, then system preference.
+        (function () {
+            var match = location.search.match(/[?&]style=(dark|light)/);
+            var theme = match && match[1];
+            if (!theme) {
+                try { theme = localStorage.getItem('calque-theme'); } catch (e) {}
+            }
+            if (theme !== 'dark' && theme !== 'light') {
+                theme = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+            }
+            document.documentElement.setAttribute('data-theme', theme);
+        })();
+
+        function setTheme(theme) {
+            document.documentElement.setAttribute('data-theme', theme);
+            try { localStorage.setItem('calque-theme', theme); } catch (e) {}
+            var url = new URL(location.href);
+            url.searchParams.set('style', theme);
+            history.replaceState(null, '', url);
+        }
+
+        // Clicking an example card appends its code (without results) to the editor.
+        function initExamples(input) {
+            var cards = document.querySelectorAll('.examples .card');
+            Array.prototype.forEach.call(cards, function (card) {
+                card.setAttribute('role', 'button');
+                card.setAttribute('tabindex', '0');
+                card.title = 'Add to editor';
+                var insert = function () {
+                    var code = Array.prototype.map.call(card.querySelectorAll('pre'), function (pre) {
+                        return pre.textContent;
+                    }).join('\n');
+                    var value = input.value.replace(/\s+$/, '');
+                    input.value = (value ? value + '\n\n' : '') + code + '\n';
+                    input.focus();
+                    input.setSelectionRange(input.value.length, input.value.length);
+                    input.scrollTop = input.scrollHeight;
+                    input.dispatchEvent(new Event('input'));
+                };
+                card.addEventListener('click', insert);
+                card.addEventListener('keydown', function (event) {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault();
+                        insert();
+                    }
+                });
+            });
+        }
+
+        function copyLink() {
+            var url = location.href;
+            var done = function () {
+                var button = document.getElementById('copyLink');
+                button.classList.add('copied');
+                button.textContent = 'Copied!';
+                setTimeout(function () {
+                    button.classList.remove('copied');
+                    button.textContent = 'Copy link';
+                }, 1500);
+            };
+            var fallback = function () {
+                var field = document.createElement('textarea');
+                field.value = url;
+                document.body.appendChild(field);
+                field.select();
+                document.execCommand('copy');
+                document.body.removeChild(field);
+                done();
+            };
+            if (navigator.clipboard && window.isSecureContext) {
+                navigator.clipboard.writeText(url).then(done, fallback);
+            } else {
+                fallback();
+            }
+        }
+    </script>
     <script src="math.min.js"></script>
     <script src="calque.js"></script>
     <script>
         window.onload = function () {
             var input = document.getElementById('input');
             var output = document.getElementById('output');
+            var theme = document.documentElement.getAttribute('data-theme');
+            document.getElementById(theme === 'dark' ? 'rbDark' : 'rbLight').checked = true;
             window.calque = new Calque(input, output);
+            initExamples(input);
             input.focus();
-        }
-		document.getElementById('dark-styles').disabled  = true; 
+        };
     </script>
 </head>
 <body>
-    <div class="interface">
+<a class="fork-ribbon" href="https://github.com/MarvinParanoid/calque" target="_blank" rel="noopener"><span>Fork me on GitHub</span></a>
+<div class="app">
+    <main class="interface">
         <div class="output" id="output"></div>
-        <textarea class="input" id="input"></textarea>
-    </div>
-	<div class="info">
-        <a href="https://github.com/MarvinParanoid/calque"><img style="position: absolute; top: 0; right: 0; border: 0;" src="https://camo.githubusercontent.com/365986a132ccd6a44c23a9169022c0b5c890c387/68747470733a2f2f73332e616d617a6f6e6177732e636f6d2f6769746875622f726962626f6e732f666f726b6d655f72696768745f7265645f6161303030302e706e67" alt="Fork me on GitHub" data-canonical-src="https://s3.amazonaws.com/github/ribbons/forkme_right_red_aa0000.png"></a>
-        <h1>Calque</h1>
-        <hr>
-		<h2>Settings</h2>
-		<p><input type="checkbox" checked="checked" id="checkDec" onclick="window.calque.repaint();" /> dec
-		<input type="checkbox" checked="checked" id="checkHex" onclick="window.calque.repaint();"/> hex
-		<input type="checkbox" checked="checked" id="checkBin" onclick="window.calque.repaint();"/> bin 
-		
-		<br><p>
-		<input type="radio" name="rb_group1" id="rbLight" checked onclick="document.getElementById('dark-styles').disabled=true; window.location.search=window.location.search.replace('style=dark',''); "/> Light side
-		<input type="radio" name="rb_group1" id="rbDark" onclick="document.getElementById('dark-styles').disabled=false; window.location.search+='style=dark'; "/> Dark side
-		
-        <h2>Expressions</h2>
-        <pre data-result=" = 5">sqrt(3^2 + 4^2)</pre>
-        <pre data-result=" = 2i">sqrt(-4)</pre>
-        <pre data-result=" = 5.08 cm">2 inch to cm</pre>
-        <pre data-result=" = 0.70711">cos(45 deg)</pre>
-        <h2>Variables</h2>
-        <pre data-result=" = 6">a = 2 + 2 * 2</pre>
-        <pre data-result=" = 5">b = a - 1</pre>
-        <pre data-result=" = 30">a * b</pre>
-        <h2>Functions</h2>
-        <pre data-result=" fn">pow2(x) = x ^ 2</pre>
-        <pre data-result=" = 36">pow2(6)</pre>
-        
-		<h2>Numeral systems</h2>
-		<pre data-result=" = 17086 = 0x42BE">0x42AB + 19</pre>
-		<pre data-result=" = 342 = 0b101010110">0b10101011&lt&lt1 </pre>
-		
-		<hr>
-        <h2>Copy URL to share</h2>
-        <p><form action="http://tinyurl.com/create.php" method="post" target="_blank">
-        <input type="hidden" name="url" id="share" style="width:100%">
-        <input type="submit" name="submit" id="tinyurl" value="Shorten the URL">
-        </form>
-        <hr>
-        <p>Using <a target="blank" href="https://github.com/josdejong/mathjs">math.js</a>.</p>
-        <p>Original code: <a target="blank" href="https://github.com/grimalschi/calque">grimalschi/calque</a>.</p>
-        <hr>
-        <p>Привет, <a href="http://habrahabr.ru/post/264229/">Хабр</a>!</p>
-    </div>
+        <textarea class="input" id="input" spellcheck="false" autocomplete="off" autocapitalize="off"
+                  aria-label="Expressions"
+                  placeholder="Start typing…&#10;&#10;price = 1200&#10;price * 3&#10;2 inch to cm"></textarea>
+    </main>
+
+    <aside class="info">
+        <header class="brand">
+            <div>
+                <h1>Calque</h1>
+                <p class="tagline">Calculator notepad</p>
+            </div>
+            <a class="icon-link" href="https://github.com/MarvinParanoid/calque" title="Source on GitHub" aria-label="Source on GitHub">
+                <svg viewBox="0 0 16 16" width="22" height="22" aria-hidden="true"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+            </a>
+        </header>
+
+        <section class="settings">
+            <div class="setting">
+                <span class="label">Show</span>
+                <div class="chips">
+                    <label class="chip"><input type="checkbox" checked id="checkDec" onclick="window.calque.repaint();"><span>dec</span></label>
+                    <label class="chip"><input type="checkbox" checked id="checkHex" onclick="window.calque.repaint();"><span>hex</span></label>
+                    <label class="chip"><input type="checkbox" checked id="checkBin" onclick="window.calque.repaint();"><span>bin</span></label>
+                </div>
+            </div>
+            <div class="setting">
+                <span class="label">Theme</span>
+                <div class="chips">
+                    <label class="chip"><input type="radio" name="theme" id="rbLight" onclick="setTheme('light');"><span>Light</span></label>
+                    <label class="chip"><input type="radio" name="theme" id="rbDark" onclick="setTheme('dark');"><span>Dark</span></label>
+                </div>
+            </div>
+        </section>
+
+        <section class="examples">
+            <p class="note">Click an example to add it to the editor.</p>
+            <h2>Expressions</h2>
+            <div class="card">
+                <pre data-result=" = 5">sqrt(3^2 + 4^2)</pre>
+                <pre data-result=" = 2i">sqrt(-4)</pre>
+                <pre data-result=" = 5.08 cm">2 inch to cm</pre>
+                <pre data-result=" = 0.7071…">cos(45 deg)</pre>
+            </div>
+
+            <h2>Variables</h2>
+            <div class="card">
+                <pre data-result=" = 6">a = 2 + 2 * 2</pre>
+                <pre data-result=" = 5">b = a - 1</pre>
+                <pre data-result=" = 30">a * b</pre>
+                <pre data-result=" = 31">last + 1</pre>
+            </div>
+
+            <h2>Functions</h2>
+            <div class="card">
+                <pre data-result=" fn">pow2(x) = x ^ 2</pre>
+                <pre data-result=" = 36">pow2(6)</pre>
+            </div>
+
+            <h2>Sums</h2>
+            <p class="note">A line ending with <code>:</code> sums the lines indented below it.</p>
+            <div class="card">
+                <pre data-result=" = 1150">monthly:</pre>
+                <pre data-result=" = 800">  rent = 800</pre>
+                <pre data-result=" = 350">  food = 350</pre>
+                <pre data-result=" = 13800">monthly * 12</pre>
+            </div>
+
+            <h2>Numeral systems</h2>
+            <div class="card">
+                <pre data-result=" = 17086 = 0x42BE">0x42AB + 19</pre>
+                <pre data-result=" = 342 = 0x156">0b10101011 &lt;&lt; 1</pre>
+            </div>
+        </section>
+
+        <section class="share">
+            <button type="button" id="copyLink" class="button" onclick="copyLink();">Copy link</button>
+            <p class="hint">The link contains everything you typed.</p>
+        </section>
+
+        <footer class="credits">
+            <p>Powered by <a target="_blank" rel="noopener" href="https://github.com/josdejong/mathjs">math.js</a>.
+               Original code by <a target="_blank" rel="noopener" href="https://github.com/grimalschi/calque">grimalschi</a>.</p>
+            <p>Привет, <a target="_blank" rel="noopener" href="https://habr.com/post/264229/">Хабр</a>!</p>
+        </footer>
+    </aside>
+</div>
 </body>
 </html>

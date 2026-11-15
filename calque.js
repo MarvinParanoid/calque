@@ -68,22 +68,22 @@
         this.lines = [];
         this.expressions = [];
         this.activeLine = 0;
-		
-		if ( window.location.search.match(/style=dark/)){
-			document.getElementById('dark-styles').disabled  = false;
-			document.getElementById('rbDark').checked  = true;
-		}
-		
-		if (window.location.hash.length) {    
+
+		if (window.location.hash.length) {
 			try {
 				inputEl.value = decodeData(window.location.hash.slice(1));
 			} catch(e) {}
 		}
 		
+        var syncScroll = function () {
+            outputEl.scrollTop = inputEl.scrollTop;
+            outputEl.scrollLeft = inputEl.scrollLeft;
+        };
+
         var handler = function () {
             this.updateActiveLine();
             this.input();
-            outputEl.scrollTop = inputEl.scrollTop;
+            syncScroll();
         }.bind(this);
 
         handler();
@@ -93,14 +93,7 @@
             inputEl.addEventListener(eventName, handler);
         });
 
-		document.getElementById('tinyurl').onclick = function() {
-			 document.getElementById('share').value = window.location.href;
-		}
-		
-		inputEl.onscroll = function () {
-			outputEl.scrollTop = inputEl.scrollTop;
-		};
-
+        inputEl.addEventListener('scroll', syncScroll);
     }
 
     Calque.prototype.updateActiveLine = function () {
@@ -253,35 +246,34 @@
             if (type === 'empty') for (var t = 0; t <= expression.tab; t++) prefix += '  ';
             for (var i = 0; i < expression.tab; i++) prefix = prefix.replace(/(\| )?  /, '$1| ');
 
-            if (type === 'result') {
-                if (expression.result instanceof Function) {
-                    prefix += 'fn';
-                } else {
-                    prefix += '';
-                }
-            }
             if (type === 'error') prefix += '// ';
 
-            var data = '';
+            // Each piece: [css class, text]; text is escaped when rendered.
+            var pieces = [];
             if (type === 'result') {
                 if (expression.result === null) {
-                    data = 'null';
+                    pieces.push(['value', 'null']);
                 } else if (expression.result instanceof Function) {
-                    var source = expression.result.toString();
-                    data = '';
+                    pieces.push(['fn', 'fn']);
                 } else {
-                    result = expression.result.toString();
-					if (document.getElementById("checkDec").checked) data+= " = " + result;
-					if (document.getElementById("checkHex").checked) data+= " = " + strDecTo(result,"0x",16);
-					if (document.getElementById("checkBin").checked) data+= " = " + strDecTo(result,"0b",2);
+                    var result = expression.result.toString();
+                    var hex = toBase(result, '0x', 16);
+                    var bin = toBase(result, '0b', 2);
+                    if (document.getElementById('checkDec').checked) pieces.push(['value', ' = ' + result]);
+                    if (hex && document.getElementById('checkHex').checked) pieces.push(['alt', ' = ' + hex]);
+                    if (bin && document.getElementById('checkBin').checked) pieces.push(['alt', ' = ' + bin]);
                 }
-            };
-            if (type === 'error') data = expression.error;
+            }
+            if (type === 'error') pieces.push(['message', expression.error]);
 
-            var lineHtml = '<div class="' + type + '">';
+            var classes = type + (this.activeLine === index + 1 ? ' active' : '');
+            var lineHtml = '<div class="' + classes + '">';
             lineHtml += '<span class="prefix" data-prefix="' + escapeHtml(prefix) + '"></span>';
-            lineHtml += '<span class="data">' + escapeHtml(data) + '</span>';
-            lineHtml += '</div>';
+            lineHtml += '<span class="data">';
+            pieces.forEach(function (piece) {
+                lineHtml += '<span class="' + piece[0] + '">' + escapeHtml(piece[1]) + '</span>';
+            });
+            lineHtml += '</span></div>';
 
             html += lineHtml;
         }.bind(this));
@@ -298,8 +290,8 @@
 			.replace(/'/g, '&#39;');
 	}
 
-	function strDecTo(str,prefix,notation){
-		return prefix+Math.round(Number(str)).toString(notation).toUpperCase();
+	function toBase(str, prefix, base) {
+		return prefix + Math.round(Number(str)).toString(base).toUpperCase();
 	}
 
     window.Calque = Calque;
