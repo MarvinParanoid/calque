@@ -36,6 +36,30 @@
         return 'e' + btoa(escape(data));
     };
 	
+    function escapeRegExp(text) {
+        return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    }
+
+    // Names on the left of assignment '=' (not ==, <=, >=, !=).
+    // For function definitions "f(x) = ..." the name is the part before '('.
+    function assignedNames(code) {
+        return code.split(/(?<![=<>!])=(?!=)/).slice(0, -1).map(function (part) {
+            var paren = part.indexOf('(');
+            return (paren >= 0 ? part.substr(0, paren) : part).trim();
+        });
+    }
+
+    // Variable names may contain spaces ("my var"); such names are
+    // rewritten to "my_var" before evaluation.
+    function addSpacevar(spacevars, name) {
+        if (!/^[\wа-яА-ЯёЁ]+( +[\wа-яА-ЯёЁ]+)+$/.test(name)) return;
+        spacevars.splice(0, 0, {
+            original: name,
+            replaced: name.replace(/ /g, '_'),
+            regexp: new RegExp(escapeRegExp(name), 'g')
+        });
+    }
+
     function Calque(inputEl, outputEl) {
         this.inputEl = inputEl;
         this.outputEl = outputEl;
@@ -139,35 +163,15 @@
                 var closed = sums.splice(expression.tab);
             }
 
-            if (expression.processed.indexOf('=') > 0) {
-                var names = [];
-
-                expression.processed.split('=').slice(0, -1).forEach(function (part) {
-                    if (expression.processed.indexOf('(') > 0) {
-                        names.push(part.substr(0, part.indexOf('(')).trim());
-                    } else {
-                        names.push(part.trim());
-                    }
-                });
-				
-                names.forEach(function (name) {
-                    spacevars.splice(0, 0, {
-                        original: name,
-                        replaced: name.replace(/ /g, '_'),
-                        regexp: new RegExp(name, 'g')
-                    });
-                });
-            }
+            assignedNames(expression.processed).forEach(function (name) {
+                addSpacevar(spacevars, name);
+            });
 
             if (expression.processed.trim().slice(-1) === ':') {
                 var name = expression.processed.trim().slice(0, -1).trim();
                 expression.variable = name.replace(/ /g, '_');
 
-                spacevars.splice(0, 0, {
-                    original: name,
-                    replaced: name.replace(/ /g, '_'),
-                    regexp: new RegExp(name, 'g')
-                });
+                addSpacevar(spacevars, name);
 
                 if (expression.tab === sums.length) {
                     sums.push(expression);
