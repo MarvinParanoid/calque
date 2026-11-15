@@ -43,4 +43,31 @@ function editorState(page) {
     });
 }
 
-module.exports = { INDEX, open, editorState };
+// Put text into the editor and return what is rendered for each line:
+// { cls: 'result' | 'error' | 'empty', text }. A blank line is appended and the
+// caret placed on it, because errors on the active line are hidden by design.
+async function calc(page, text) {
+    return page.evaluate((text) => {
+        const input = document.querySelector('#input');
+        input.value = text + '\n';
+        input.setSelectionRange(input.value.length, input.value.length);
+        input.dispatchEvent(new Event('input'));
+        const rows = [...document.querySelectorAll('#output > div')].slice(0, -1);
+        return rows.map((row) => ({
+            cls: row.className.replace(' active', ''),
+            // for errors: the message without the "// " marker
+            text: (row.querySelector('.message') || row.querySelector('.data')).textContent.trim(),
+        }));
+    }, text);
+}
+
+// Only the decimal value of each line ('' for empty lines, 'ERR ...' for errors)
+async function values(page, text) {
+    return (await calc(page, text)).map(({ cls, text }) => {
+        if (cls === 'error') return 'ERR ' + text;
+        if (cls === 'empty') return '';
+        return text.replace(/^= /, '').split(' = ')[0];
+    });
+}
+
+module.exports = { INDEX, open, editorState, calc, values };

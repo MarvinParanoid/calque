@@ -1,6 +1,8 @@
 ﻿(function () {
+    // math.js identifiers can't contain Cyrillic, so letters of the whole
+    // Cyrillic block are encoded as _x<code>x_ before evaluation.
     function translit(text){
-        return text.replace(/[а-яА-ЯёЁ]/g, function (match) {
+        return text.replace(/[\u0400-\u04FF]/g, function (match) {
             return '_x' + match.charCodeAt() + 'x_';
         });
     }
@@ -36,6 +38,22 @@
         return 'e' + btoa(escape(data));
     };
 	
+    // String literals ("..." or '...') must be left as typed: no name
+    // rewriting, transliteration or assignment detection inside them.
+    var STRING_LITERAL = /("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')/;
+
+    function outsideStrings(code, fn) {
+        return code.split(STRING_LITERAL).map(function (part, i) {
+            return i % 2 ? part : fn(part);
+        }).join('');
+    }
+
+    function withoutStrings(code) {
+        return code.split(STRING_LITERAL).filter(function (part, i) {
+            return i % 2 === 0;
+        }).join('""');
+    }
+
     function escapeRegExp(text) {
         return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     }
@@ -287,7 +305,7 @@
                 var closed = sums.splice(expression.tab);
             }
 
-            assignedNames(expression.processed).forEach(function (name) {
+            assignedNames(withoutStrings(expression.processed)).forEach(function (name) {
                 addSpacevar(spacevars, name);
             });
 
@@ -297,6 +315,7 @@
 
                 addSpacevar(spacevars, name);
 
+                expression.isSum = true;
                 if (expression.tab === sums.length) {
                     sums.push(expression);
                 } else {
@@ -306,33 +325,46 @@
                 expression.processed = name + ' = 0';
             }
 			
-            spacevars.forEach(function (spacevar) {
-                expression.processed = expression.processed.replace(spacevar.regexp, spacevar.replaced);
+            // Hex/bin/octal literals (0xFF, 0b101, 0o17) are parsed by math.js itself.
+            expression.processed = outsideStrings(expression.processed, function (part) {
+                spacevars.forEach(function (spacevar) {
+                    part = part.replace(spacevar.regexp, spacevar.replaced);
+                });
+                return translit(part);
             });
 
-            expression.processed = translit(expression.processed);
-			
-            expression.processed = expression.processed.replace( /0x[0-9A-Fa-f]+/g , function(match){ return parseInt( match, 16 ); } );
-			expression.processed = expression.processed.replace( /0b[01]+/g , function(match){ return  parseInt( match.substr(2,match.length), 2); } );
-			
             try {
                 expression.result = math.evaluate(expression.processed, scope);
             } catch (e) {
                 expression.error = detranslit(e.toString());
             }
 
-            if (expression.result !== undefined) {
-                scope.last = expression.result;
+            var value = expression.result;
+
+            // An error line leaves 'last' pointing to the previous result
+            if (!expression.error && value !== undefined) {
+                scope.last = value;
             }
 
-            if (sums.length && expression.result && !expression.error) {
+            // Every value line (including 0 and other falsy values) is added to
+            // the open sums. Not added: errors, empty lines, function
+            // definitions, null, and sum headers themselves (their items are
+            // already counted). The total starts empty rather than at 0, so
+            // sums of values with units work.
+            var addable = !expression.error && !expression.isSum && value !== undefined
+                && value !== null && typeof value !== 'function';
+            if (sums.length && addable) {
                 sums.forEach(function (sum) {
                     if (!sum.error) {
                         try {
-                            sum.result = math.add(sum.result, expression.result);
-                            scope[translit(sum.variable)] = sum.result;
+                            sum.total = sum.total === undefined ? value : math.add(sum.total, value);
+                            sum.result = sum.total;
+                            scope[translit(sum.variable)] = sum.total;
                         } catch (e) {
                             sum.error = 'Error: Sum can not be calculated';
+                            // A failed sum has no value: don't leave the last
+                            // partial total in its variable.
+                            delete scope[translit(sum.variable)];
                         }
                     }
                 });
@@ -384,9 +416,9 @@
                 } else if (expression.result instanceof Function) {
                     pieces.push(['fn', 'fn']);
                 } else {
-                    var result = expression.result.toString();
-                    var hex = toBase(result, '0x', 16);
-                    var bin = toBase(result, '0b', 2);
+                    var result = formatResult(expression.result);
+                    var hex = toBase(expression.result, '0x', 16);
+                    var bin = toBase(expression.result, '0b', 2);
                     if (document.getElementById('checkDec').checked) pieces.push(['value', ' = ' + result]);
                     if (hex && document.getElementById('checkHex').checked) pieces.push(['alt', ' = ' + hex]);
                     if (bin && document.getElementById('checkBin').checked) pieces.push(['alt', ' = ' + bin]);
@@ -419,13 +451,27 @@
 			.replace(/'/g, '&#39;');
 	}
 
+	// Non-integers are shown with 15 significant digits, which hides binary
+	// floating point noise (0.1 + 0.2 = 0.3, 5 cm + 2 cm = 7 cm). Integers are
+	// shown as is. Exponent thresholds match JavaScript's own number output.
+	var FORMAT = { precision: 15, lowerExp: -6, upperExp: 21 };
+
+	function formatResult(value) {
+		if (typeof value === 'number') {
+			return Number.isInteger(value) || !isFinite(value) ? String(value) : math.format(value, FORMAT);
+		}
+		if (value && (value.isUnit || value.isComplex || value.isMatrix || Array.isArray(value))) {
+			return math.format(value, FORMAT);
+		}
+		return String(value);
+	}
+
 	// Hex/bin only make sense for integers: skip units, complex numbers,
 	// booleans, fractions and so on instead of showing 0xNAN or a rounded value.
-	function toBase(str, prefix, base) {
-		var number = Number(str);
-		if (!Number.isSafeInteger(number)) return null;
-		var sign = number < 0 ? '-' : '';
-		return sign + prefix + Math.abs(number).toString(base).toUpperCase();
+	function toBase(value, prefix, base) {
+		if (typeof value !== 'number' || !Number.isSafeInteger(value)) return null;
+		var sign = value < 0 ? '-' : '';
+		return sign + prefix + Math.abs(value).toString(base).toUpperCase();
 	}
 
     window.Calque = Calque;
