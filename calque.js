@@ -60,6 +60,51 @@
         });
     }
 
+    var INDENT = '  ';
+
+    // Replace text in [start, end) keeping the browser undo stack (Ctrl+Z).
+    function replaceRange(el, start, end, text) {
+        el.setSelectionRange(start, end);
+        // insertText('') misplaces the caret in Chrome, so deletions use 'delete'
+        var ok = text ? document.execCommand('insertText', false, text)
+                      : start === end || document.execCommand('delete');
+        if (!ok) {
+            el.setRangeText(text, start, end, 'end');
+            el.dispatchEvent(new Event('input'));
+        }
+    }
+
+    // Editor-like indentation for sums:
+    // - Enter after "name:" opens an indented line;
+    // - Enter keeps the current indent;
+    // - Enter on an empty indented line steps one level out;
+    // - Backspace inside the indent removes a whole level.
+    function autoIndent(event) {
+        var el = event.target;
+        if (event.ctrlKey || event.metaKey || event.altKey || event.isComposing) return;
+        if (el.selectionStart !== el.selectionEnd) return;
+
+        var caret = el.selectionStart;
+        var lineStart = el.value.lastIndexOf('\n', caret - 1) + 1;
+        var before = el.value.slice(lineStart, caret);
+        var indent = before.match(/^ */)[0];
+
+        if (event.key === 'Enter' && !event.shiftKey) {
+            event.preventDefault();
+            if (before.length && before === indent) {
+                var outdented = indent.slice(0, Math.max(0, indent.length - INDENT.length));
+                replaceRange(el, lineStart, caret, outdented);
+            } else {
+                if (before.trim().slice(-1) === ':') indent += INDENT;
+                replaceRange(el, caret, caret, '\n' + indent);
+            }
+        } else if (event.key === 'Backspace' && before.length && before === indent) {
+            event.preventDefault();
+            var remove = before.length % INDENT.length || INDENT.length;
+            replaceRange(el, caret - remove, caret, '');
+        }
+    }
+
     function Calque(inputEl, outputEl) {
         this.inputEl = inputEl;
         this.outputEl = outputEl;
@@ -94,6 +139,7 @@
         });
 
         inputEl.addEventListener('scroll', syncScroll);
+        inputEl.addEventListener('keydown', autoIndent);
     }
 
     Calque.prototype.updateActiveLine = function () {
