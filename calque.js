@@ -1,4 +1,77 @@
 ﻿(function () {
+    // ---------- Expression sandbox hardening ----------
+    // Text comes from shared links, so expressions must not be able to change
+    // the global math.js state (it would outlive the line that did it) or
+    // freeze the tab by allocating huge structures.
+
+    var MAX_ELEMENTS = 1e6;      // largest matrix / range / set an expression may create
+    var MAX_RESULT_CHARS = 1000; // longer results are cut in the output
+
+    function disabled(name) {
+        return function () {
+            throw new Error('Function ' + name + ' is not available in Calque');
+        };
+    }
+
+    function count(value) {
+        if (value && value.isMatrix) value = value.valueOf();
+        if (!Array.isArray(value)) return 1;
+        return value.reduce(function (total, item) { return total + count(item); }, 0);
+    }
+
+    function product(dims) {
+        return dims.reduce(function (total, dim) { return total * Math.abs(Number(dim)); }, 1);
+    }
+
+    // zeros(2, 3), zeros([2, 3]), zeros(matrix([2, 3])), with an optional format string
+    function dimsOf(args) {
+        var first = args[0];
+        if (first && (Array.isArray(first) || first.isMatrix)) return [].concat(first.valueOf());
+        return Array.prototype.filter.call(args, function (arg) { return typeof arg !== 'string'; });
+    }
+
+    function rangeLength(args) {
+        if (typeof args[0] === 'string') {
+            var parts = args[0].split(':').map(Number); // "start:end" or "start:step:end"
+            args = parts.length === 3 ? [parts[0], parts[2], parts[1]] : parts;
+        }
+        var step = args.length > 2 && typeof args[2] !== 'boolean' ? args[2] : 1;
+        return math.number(math.abs(math.divide(math.subtract(args[1], args[0]), step)));
+    }
+
+    function limited(name, sizeOf) {
+        var original = math[name];
+        return function () {
+            var size;
+            try { size = sizeOf(arguments); } catch (e) { size = 0; } // let math.js report bad arguments
+            if (size > MAX_ELEMENTS) {
+                throw new Error('Result of ' + name + ' is too large (more than ' + MAX_ELEMENTS + ' elements)');
+            }
+            return original.apply(math, arguments);
+        };
+    }
+
+    math.import({
+        'import': disabled('import'),
+        createUnit: disabled('createUnit'),
+        config: disabled('config'),
+        zeros: limited('zeros', function (a) { return product(dimsOf(a)); }),
+        ones: limited('ones', function (a) { return product(dimsOf(a)); }),
+        identity: limited('identity', function (a) {
+            var dims = dimsOf(a);
+            return dims.length === 1 ? product(dims) * product(dims) : product(dims);
+        }),
+        // random(), random(max), random(min, max) are scalars; random(size, ...) is a matrix
+        random: limited('random', function (a) { return a[0] && typeof a[0] === 'object' ? product(dimsOf(a)) : 1; }),
+        randomInt: limited('randomInt', function (a) { return a[0] && typeof a[0] === 'object' ? product(dimsOf(a)) : 1; }),
+        range: limited('range', rangeLength),
+        resize: limited('resize', function (a) { return product(dimsOf([a[1]])); }),
+        matrixFromFunction: limited('matrixFromFunction', function (a) { return product(dimsOf([a[0]])); }),
+        kron: limited('kron', function (a) { return count(a[0]) * count(a[1]); }),
+        setCartesian: limited('setCartesian', function (a) { return count(a[0]) * count(a[1]); }),
+        setPowerset: limited('setPowerset', function (a) { return Math.pow(2, count(a[0])); })
+    }, { override: true });
+
     // math.js identifiers can't contain Cyrillic, so letters of the whole
     // Cyrillic block are encoded as _x<code>x_ before evaluation.
     function translit(text){
@@ -457,13 +530,18 @@
 	var FORMAT = { precision: 15, lowerExp: -6, upperExp: 21 };
 
 	function formatResult(value) {
+		var text;
 		if (typeof value === 'number') {
-			return Number.isInteger(value) || !isFinite(value) ? String(value) : math.format(value, FORMAT);
+			text = Number.isInteger(value) || !isFinite(value) ? String(value) : math.format(value, FORMAT);
+		} else if (value && (value.isMatrix || Array.isArray(value)) && count(value) > MAX_RESULT_CHARS) {
+			// Formatting a huge matrix is slow and unreadable anyway: show its size
+			return 'matrix ' + math.size(value).valueOf().join(' × ');
+		} else if (value && (value.isUnit || value.isComplex || value.isMatrix || Array.isArray(value))) {
+			text = math.format(value, FORMAT);
+		} else {
+			text = String(value);
 		}
-		if (value && (value.isUnit || value.isComplex || value.isMatrix || Array.isArray(value))) {
-			return math.format(value, FORMAT);
-		}
-		return String(value);
+		return text.length > MAX_RESULT_CHARS ? text.slice(0, MAX_RESULT_CHARS) + '…' : text;
 	}
 
 	// Hex/bin only make sense for integers: skip units, complex numbers,

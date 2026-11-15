@@ -26,6 +26,11 @@ The document is stored in the URL hash, so the link contains everything you type
 - **Precision.** Non-integer results are *displayed* rounded to 15 significant
   digits, which hides binary floating point noise (`0.1 + 0.2` shows `0.3`).
   Calculations themselves use full double precision; integers are shown in full.
+- **Untrusted links.** Expressions cannot run JavaScript or change math.js
+  configuration (`config`, `createUnit`, `import` are disabled), and functions
+  that create matrices, ranges or sets refuse results over 1,000,000 elements.
+  This protection against resource-heavy expressions is **not complete**: a
+  costly computation within the limits can still make the tab unresponsive.
 
 ## Tests
 
