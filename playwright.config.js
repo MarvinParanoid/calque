@@ -3,20 +3,36 @@
 //
 //   npm install
 //   npx playwright install chromium      # once, downloads the matching browser
-//   npm test
+//   npm test                             # Chromium and Firefox
+//   npx playwright test --project=chromium
 //
-// To reuse an already installed Chromium instead of downloading one:
-//   PLAYWRIGHT_CHROMIUM_PATH=/path/to/chrome npm test
+// Firefox runs the regular installed Firefox through WebDriver BiDi
+// (channel "moz-firefox"), no patched build needed.
+//
+// Environment overrides:
+//   PLAYWRIGHT_CHROMIUM_PATH=/path/to/chrome   reuse an installed Chromium
+//   PLAYWRIGHT_FIREFOX_PATH=/path/to/firefox   Firefox binary if not found automatically
+//   CALQUE_URL=https://.../calque/             test a deployed site instead of the local files
 const { defineConfig, devices } = require('@playwright/test');
+
+const executable = (variable) => (process.env[variable] ? { executablePath: process.env[variable] } : {});
 
 module.exports = defineConfig({
     testDir: './tests',
     fullyParallel: true,
     reporter: [['list']],
-    use: {
-        ...devices['Desktop Chrome'],
-        launchOptions: process.env.PLAYWRIGHT_CHROMIUM_PATH
-            ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM_PATH }
-            : {},
-    },
+    projects: [
+        {
+            name: 'chromium',
+            use: { ...devices['Desktop Chrome'], launchOptions: executable('PLAYWRIGHT_CHROMIUM_PATH') },
+        },
+        {
+            name: 'firefox',
+            use: {
+                ...devices['Desktop Firefox'],
+                channel: 'moz-firefox',
+                launchOptions: executable('PLAYWRIGHT_FIREFOX_PATH'),
+            },
+        },
+    ],
 });

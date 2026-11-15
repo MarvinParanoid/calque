@@ -19,7 +19,13 @@ const LONG_TEXT = Array.from({ length: 40 }, (_, i) => `x${i} = ${i}`).join('\n'
 
 for (const focusScrolls of [true, false]) {
     test.describe(`phone, focus() ${focusScrolls ? 'scrolls the page' : 'does not scroll (iOS-like)'}`, () => {
-        test.use({ viewport: { width: 390, height: 740 }, isMobile: true, hasTouch: true });
+        // Firefox (WebDriver BiDi) has no mobile/touch emulation: there the same
+        // narrow layout is used and the card is clicked instead of tapped.
+        test.use({
+            viewport: { width: 390, height: 740 },
+            isMobile: async ({ browserName }, use) => use(browserName === 'chromium'),
+            hasTouch: async ({ browserName }, use) => use(browserName === 'chromium'),
+        });
 
         test.beforeEach(async ({ page }) => {
             if (!focusScrolls) {
@@ -30,12 +36,13 @@ for (const focusScrolls of [true, false]) {
             }
         });
 
-        test('tapping an example brings the editor and the new lines into view', async ({ page }) => {
+        test('tapping an example brings the editor and the new lines into view', async ({ page, browserName }) => {
             await open(page, { text: LONG_TEXT });
             await sumsCard(page).scrollIntoViewIfNeeded();
             expect(await page.evaluate(() => document.querySelector('.interface').getBoundingClientRect().bottom)).toBeLessThan(0);
 
-            await sumsCard(page).tap();
+            if (browserName === 'chromium') await sumsCard(page).tap();
+            else await sumsCard(page).click();
 
             await expect.poll(() => insertedLineVisible(page)).toBe(true);
             await expect(page.locator('#input')).toBeFocused();

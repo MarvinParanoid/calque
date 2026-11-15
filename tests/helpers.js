@@ -1,7 +1,8 @@
 const path = require('path');
 const { pathToFileURL } = require('url');
 
-const INDEX = pathToFileURL(path.join(__dirname, '..', 'index.html')).href;
+// Local files by default; CALQUE_URL tests a deployed copy (e.g. production)
+const INDEX = process.env.CALQUE_URL || pathToFileURL(path.join(__dirname, '..', 'index.html')).href;
 
 // Same encoding as calque.js encodeData('e' variant): works for any text.
 function hashFor(text) {

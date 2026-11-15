@@ -60,16 +60,26 @@ test('undo and redo of typing and auto-indent', async ({ page }) => {
     await page.keyboard.type('5');
     await expect(input).toHaveValue('s:\n  5');
 
-    // Chrome merges consecutive insertions into one undo step, so the
-    // auto-indent and the typed "5" are undone together - as with plain typing.
-    await page.keyboard.press('Control+z');
-    await expect(input).toHaveValue('s:');
-    await page.keyboard.press('Control+z');
-    await expect(input).toHaveValue('');
-    await page.keyboard.press('Control+Shift+z');
-    await expect(input).toHaveValue('s:');
-    await page.keyboard.press('Control+y');
-    await expect(input).toHaveValue('s:\n  5');
+    // Browsers group undo steps differently (Chrome merges the auto-indent with
+    // the next typed character, Firefox keeps them apart), so the test checks
+    // the states passed through and the end state, not the number of steps.
+    const earlier = ['s:\n  5', 's:\n  ', 's:', 's', ''];
+    const undone = [];
+    for (let i = 0; i < earlier.length && (await input.inputValue()) !== ''; i++) {
+        await page.keyboard.press('Control+z');
+        undone.push(await input.inputValue());
+    }
+    expect(undone[undone.length - 1]).toBe('');
+    expect(undone).toContain('s:');                       // the auto-indent is undone separately from "s:"
+    for (const state of undone) expect(earlier).toContain(state);
+
+    const redone = [];
+    for (let i = 0; i < earlier.length && (await input.inputValue()) !== 's:\n  5'; i++) {
+        await page.keyboard.press(i % 2 ? 'Control+y' : 'Control+Shift+z'); // both redo shortcuts
+        redone.push(await input.inputValue());
+    }
+    expect(redone[redone.length - 1]).toBe('s:\n  5');
+    for (const state of redone) expect(earlier).toContain(state);
     await expect(page.locator('#output > div').first()).toContainText('= 5');
 });
 
@@ -127,4 +137,32 @@ test('theme switch keeps results aligned', async ({ page }) => {
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
     const after = await resultOffsets(page, ['x = 1', 'long_name = 2']);
     for (const offset of [...before, ...after]) expect(offset).toBeLessThan(0.6);
+});
+
+test('typical use produces no JavaScript errors', async ({ page }) => {
+    const errors = [];
+    page.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
+    page.on('console', (m) => { if (m.type() === 'error') errors.push('console: ' + m.text()); });
+
+    await open(page, { text: 'price = 1200\nprice * 3\n' });
+    const input = page.locator('#input');
+    await input.focus();
+    await page.keyboard.press('Control+End');
+    await page.keyboard.type('monthly:');
+    await page.keyboard.press('Enter');
+    await page.keyboard.type('rent = 800');
+    await page.keyboard.press('Enter');
+    await page.keyboard.press('Enter');
+    await page.keyboard.type('foo +');
+    await page.keyboard.press('Enter');
+    await page.keyboard.type('0xFF + sqrt(-4) + 2 inch to cm');
+    await page.keyboard.press('Control+z');
+    await page.locator('.group', { hasText: 'Functions' }).locator('.card').click();
+    for (const toggle of ['#checkHex', '#checkBin', '#rbDark', '#checkHex', '#rbLight']) await page.locator(`label:has(${toggle})`).click();
+    await page.locator('#copyLink').click();
+    await page.evaluate(() => { location.hash = 'a' + btoa('1 + 1'); });
+    await expect(input).toHaveValue('1 + 1');
+
+    await expect(page.locator('#output > div').first()).toContainText('= 2');
+    expect(errors).toEqual([]);
 });

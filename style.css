@@ -14,7 +14,7 @@
     --fs-label: 11.5px;
 
     /* Layout */
-    --sidebar-width: clamp(320px, 20vw, 380px);
+    --sidebar-width: clamp(336px, 20vw, 380px); /* 336: room for a classic 17px scrollbar */
     --editor-pad-x: 24px;
     --editor-pad-y: 24px;
     --radius: 8px;

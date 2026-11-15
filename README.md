@@ -34,12 +34,17 @@ The document is stored in the URL hash, so the link contains everything you type
 
 ## Tests
 
-Browser tests use Playwright:
+Browser tests use Playwright and run in Chromium and Firefox:
 
 ```
 npm install
-npx playwright install chromium   # once
-npm test
+npx playwright install chromium      # once
+npm test                             # both browsers
+npx playwright test --project=chromium
 ```
 
-To reuse an installed Chromium: `PLAYWRIGHT_CHROMIUM_PATH=/path/to/chrome npm test`.
+Firefox is the regular installed Firefox, driven through WebDriver BiDi. It has
+no mobile or touch emulation there, so phone scenarios run at phone width with
+mouse clicks instead of taps. `PLAYWRIGHT_CHROMIUM_PATH` / `PLAYWRIGHT_FIREFOX_PATH`
+point to specific browser binaries; `CALQUE_URL` runs the tests against a
+deployed copy instead of the local files.

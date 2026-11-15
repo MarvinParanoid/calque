@@ -14,7 +14,12 @@ const LONG = [
 
 for (const width of [360, 390]) {
     test.describe(`${width}px phone`, () => {
-        test.use({ viewport: { width, height: 740 }, isMobile: true, hasTouch: true });
+        // mobile/touch emulation where the browser supports it (not Firefox via BiDi)
+        test.use({
+            viewport: { width, height: 740 },
+            isMobile: async ({ browserName }, use) => use(browserName === 'chromium'),
+            hasTouch: async ({ browserName }, use) => use(browserName === 'chromium'),
+        });
 
         test('results beyond the screen are reachable by horizontal scroll', async ({ page }) => {
             await open(page, { text: LONG });
