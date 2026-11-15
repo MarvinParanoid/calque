@@ -122,7 +122,9 @@
     }
     
     Calque.prototype.updateHash = function(data) {
-        window.location.hash = encodeData(data);
+        // replaceState instead of location.hash: don't add a history entry per keystroke
+        var hash = encodeData(data);
+        history.replaceState(null, '', hash ? '#' + hash : window.location.pathname + window.location.search);
     }
 
     Calque.prototype.input = function () {
