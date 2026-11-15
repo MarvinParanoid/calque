@@ -272,8 +272,8 @@
             if (type === 'error') data = expression.error;
 
             var lineHtml = '<div class="' + type + '">';
-            lineHtml += '<span class="prefix" data-prefix="' + prefix + '"></span>';
-            lineHtml += '<span class="data">' + data + '</span>';
+            lineHtml += '<span class="prefix" data-prefix="' + escapeHtml(prefix) + '"></span>';
+            lineHtml += '<span class="data">' + escapeHtml(data) + '</span>';
             lineHtml += '</div>';
 
             html += lineHtml;
@@ -282,6 +282,15 @@
         this.outputEl.innerHTML = html;
     };
 	
+	function escapeHtml(text) {
+		return String(text)
+			.replace(/&/g, '&amp;')
+			.replace(/</g, '&lt;')
+			.replace(/>/g, '&gt;')
+			.replace(/"/g, '&quot;')
+			.replace(/'/g, '&#39;');
+	}
+
 	function strDecTo(str,prefix,notation){
 		return prefix+Math.round(Number(str)).toString(notation).toUpperCase();
 	}
